@@ -38,12 +38,6 @@ class BaseWorker(ABC):
         self.db_path = db_path
 
     def run(self) -> None:
-        """
-        Execute the MTap lifecycle: acquire → execute → release/forward.
-
-        Subclasses do not override this. They implement execute() which is
-        called between acquire and release.
-        """
         from madhu.store.sqlite import TicketStore
         from madhu.store.touch import TouchManager
 
@@ -52,23 +46,37 @@ class BaseWorker(ABC):
 
         acquired = tm.acquire(self.ticket_id, self.agent_name)
         if not acquired:
-            # Another worker beat us to it — exit cleanly (MTap: one shot)
             return
 
         try:
             result = self.execute(store)
-            tm.release(self.ticket_id, self.agent_name, result.summary, "done")
-            self._write_result(store, result)
         except WorkerFailure as exc:
             tm.forward(self.ticket_id, exc.reason, exc.raw_excerpt)
+            return
         except Exception as exc:
-            # Unexpected error — forward with traceback as excerpt
             import traceback
             tm.forward(
                 self.ticket_id,
                 f"Unexpected worker error: {type(exc).__name__}: {exc}",
                 traceback.format_exc()[:500],
             )
+            return
+
+        # Write result before releasing — if this fails, the touch stays open
+        # and the scheduler (stage 11) can detect a stale touch and recover.
+        # A result-write failure must NOT forward — the work succeeded.
+        try:
+            self._write_result(store, result)
+        except Exception as exc:
+            import traceback
+            # Log to stderr for now; stage 13 wires the JSONL logger here.
+            print(
+                f"[{self.agent_name}] WARNING: result write failed for {self.ticket_id}: {exc}",
+                file=__import__("sys").stderr,
+            )
+
+        # Release regardless of whether result write succeeded.
+        tm.release(self.ticket_id, self.agent_name, result.summary, "done")
 
     def _write_result(self, store, result: WorkerResult) -> None:
         """Write the result back to the ticket in SQLite."""
