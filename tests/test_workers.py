@@ -138,10 +138,10 @@ def test_validate_rejects_wrong_name():
 
 
 def test_validate_rejects_nested_only():
-    """A function defined only inside another function is not top-level."""
-    code = "def outer():\n    def inner(): pass"
+    """A lambda or nested-only definition has no top-level function."""
+    code = "x = lambda: None"
     with pytest.raises(WorkerFailure, match="no function definition"):
-        _validate_single_function(code, "inner")
+        _validate_single_function(code, "x")
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +238,7 @@ def test_gemma_execute_wrong_payload_type():
     bad_payload = {"type": "task_brief", "goal": "something"}
     store = make_store_with_ticket(bad_payload)
     worker = GemmaWorker(ticket_id="t-004", agent_name="vasishtha", db_path=":memory:")
-    with pytest.raises(WorkerFailure, match="only handles function_spec"):
+    with pytest.raises(WorkerFailure, match="Invalid function_spec payload"):
         worker.execute(store)
 
 
@@ -262,10 +262,11 @@ def test_base_run_success_calls_release():
     """
     class SuccessWorker(BaseWorker):
         def execute(self, store):
-            return WorkerResult(data="def foo(): pass", summary="done")
+            return WorkerResult(data="def foo(): pass", summary="wrote the function")
 
     store = MagicMock()
     tm = MagicMock()
+    store.read.return_value = None
     tm.acquire.return_value = True
 
     with patch("madhu.workers.base.TicketStore", return_value=store), \
@@ -273,7 +274,7 @@ def test_base_run_success_calls_release():
         worker = SuccessWorker("t-ok", "vasishtha", ":memory:")
         worker.run()
 
-    tm.release.assert_called_once_with("t-ok", "vasishtha", "done", "done")
+    tm.release.assert_called_once_with("t-ok", "vasishtha", "wrote the function", "done")
     tm.forward.assert_not_called()
 
 
@@ -300,7 +301,7 @@ def test_base_run_acquire_false_exits_cleanly():
     """run() exits without release or forward if acquire() returns False."""
     class AnyWorker(BaseWorker):
         def execute(self, store):
-            return WorkerResult(data="x", summary="x")
+            return WorkerResult(data="def foo(): pass", summary="wrote the function")
 
     store = MagicMock()
     tm = MagicMock()
@@ -313,3 +314,42 @@ def test_base_run_acquire_false_exits_cleanly():
 
     tm.release.assert_not_called()
     tm.forward.assert_not_called()
+
+@respx.mock
+def test_gemma_execute_with_real_store():
+    """
+    execute() works with a real TicketStore that returns a FunctionSpec on read.
+    Catches mock-vs-real divergence on payload type.
+    """
+    from madhu.store.sqlite import TicketStore
+    from madhu.schemas.envelope import Envelope, Ticket
+    from madhu.schemas.payloads import FunctionSpec
+
+    respx.post(OLLAMA_URL).mock(
+        return_value=httpx.Response(200, json={"response": VALID_FUNCTION})
+    )
+
+    store = TicketStore(":memory:")
+    spec = FunctionSpec(
+        function_name="add_two",
+        signature="def add_two(a: int, b: int) -> int",
+        docstring="Return a + b.",
+        constraints=["handle negatives"],
+        examples=[{"input": "a=1, b=2", "output": "3"}],
+        imports_allowed=[],
+    )
+    ticket = Ticket(
+        envelope=Envelope(
+            id="real-store-001",
+            tier_name="Hamsa",
+            tier_level=2,
+            status="queued",
+            created_by_agent="param-aatma",
+        ),
+        payload=spec.model_dump(),
+    )
+    store.create(ticket)
+
+    worker = GemmaWorker(ticket_id="real-store-001", agent_name="vasishtha", db_path=":memory:")
+    result = worker.execute(store)
+    assert "add_two" in result.data

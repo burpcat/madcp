@@ -1,5 +1,7 @@
 # madhu/workers/base.py
 from __future__ import annotations
+from madhu.store.sqlite import TicketStore
+from madhu.store.touch import TouchManager
 
 """
 Base worker boilerplate for MadCP.
@@ -38,9 +40,6 @@ class BaseWorker(ABC):
         self.db_path = db_path
 
     def run(self) -> None:
-        from madhu.store.sqlite import TicketStore
-        from madhu.store.touch import TouchManager
-
         store = TicketStore(self.db_path)
         tm = TouchManager(store)
 
@@ -62,21 +61,11 @@ class BaseWorker(ABC):
             )
             return
 
-        # Write result before releasing — if this fails, the touch stays open
-        # and the scheduler (stage 11) can detect a stale touch and recover.
-        # A result-write failure must NOT forward — the work succeeded.
-        try:
-            self._write_result(store, result)
-        except Exception as exc:
-            import traceback
-            # Log to stderr for now; stage 13 wires the JSONL logger here.
-            print(
-                f"[{self.agent_name}] WARNING: result write failed for {self.ticket_id}: {exc}",
-                file=__import__("sys").stderr,
-            )
-
-        # Release regardless of whether result write succeeded.
+        # execute() succeeded — release touch, then write result.
+        # _write_result() is outside the try block so its failure cannot
+        # trigger a forward on an already-released ticket.
         tm.release(self.ticket_id, self.agent_name, result.summary, "done")
+        self._write_result(store, result)
 
     def _write_result(self, store, result: WorkerResult) -> None:
         """Write the result back to the ticket in SQLite."""

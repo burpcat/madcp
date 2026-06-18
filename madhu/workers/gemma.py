@@ -40,26 +40,30 @@ OLLAMA_TEMPERATURE = 0.2
 # Prompt construction
 # ---------------------------------------------------------------------------
 
-def _build_prompt(payload: dict) -> str:
-    """
-    Build the Ollama prompt from a function_spec payload dict.
-
-    Instructs Gemma to output exactly one Python function definition —
-    no prose, no markdown fences, no explanations.
-    """
-    name = payload.get("function_name", "")
-    signature = payload.get("signature", "")
-    docstring = payload.get("docstring", "")
-    constraints = payload.get("constraints", [])
-    examples = payload.get("examples", [])
-    imports_allowed = payload.get("imports_allowed", [])
+def _build_prompt(payload) -> str:
+    """Build the Ollama prompt from a FunctionSpec instance."""
+    from madhu.schemas.payloads import FunctionSpec
+    if isinstance(payload, dict):
+        # fallback for direct dict calls (smoke tests etc.)
+        name = payload.get("function_name", "")
+        signature = payload.get("signature", "")
+        docstring = payload.get("docstring", "")
+        constraints = payload.get("constraints", [])
+        examples = payload.get("examples", [])
+        imports_allowed = payload.get("imports_allowed", [])
+    else:
+        name = payload.function_name
+        signature = payload.signature
+        docstring = payload.docstring
+        constraints = payload.constraints
+        examples = payload.examples
+        imports_allowed = payload.imports_allowed
 
     constraint_block = "\n".join(f"- {c}" for c in constraints) if constraints else "none"
     example_block = "\n".join(
-        f"  input: {ex.get('input', '')}  →  output: {ex.get('output', '')}"
+        f"  input: {ex.get('input', '') if isinstance(ex, dict) else ex}  →  output: {ex.get('output', '') if isinstance(ex, dict) else ''}"
         for ex in examples
     ) if examples else "  (none)"
-
     imports_block = ", ".join(imports_allowed) if imports_allowed else "none"
 
     return f"""You are a Python function generator. Output ONLY a single Python function definition.
