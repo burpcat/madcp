@@ -1,0 +1,23 @@
+# virtual env
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Runtime / derived outputs — never commit these
+data/
+logs/
+tickets/
+
+# SQLite
+*.db
+
+# Editor
+.DS_Store
+*.swp
+
+#ignore
+plan/
