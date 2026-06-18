@@ -201,6 +201,7 @@ class TouchManager:
         self.store.update(killed)
 
         # Build the new failure note
+        # Use pre-kill touched_by — env_dict already has touched_by=None on the killed copy.
         new_note = FailureNote(
             ticket_id=ticket_id,
             agent=ticket.envelope.touched_by or "unknown",
