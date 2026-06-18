@@ -423,12 +423,12 @@ def test_migrate_on_read_upgrades_old_ticket(store: TicketStore) -> None:
                 id, schema_version, tier_name, tier_level, status,
                 collaboration_mode, mtap, created_at, updated_at,
                 created_by_agent, payload_json, failure_notes_json
-            ) VALUES ('t-old', '0.9', 'Hamsa', 24, 'queued', 'solo', 1,
+            ) VALUES ('t-old', '0.9', 'Hamsa', ?, 'queued', 'solo', 1,
                       '2024-01-01T00:00:00+00:00',
                       '2024-01-01T00:00:00+00:00',
-                      'param-aatma', '{}', '[]')"""
+                      'param-aatma', '{}', '[]')""",
+            (HAMSA_LEVEL,)
         )
-        store._conn.commit()
 
     restored = store.read("t-old")
     assert restored is not None

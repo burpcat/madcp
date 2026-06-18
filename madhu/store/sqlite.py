@@ -175,7 +175,7 @@ def _row_to_ticket(row: sqlite3.Row) -> Ticket:
             "created_by_agent":   row["created_by_agent"],
             "assigned_to_agent":  row["assigned_to_agent"],
             "touched_by":         row["touched_by"],
-            "touch_history":      [],   # populated by read() if needed
+            "touch_history": [],  # not populated by list() — call read() for full audit trail
             "failure_notes":      json.loads(row["failure_notes_json"] or "[]"),
         },
         "payload": json.loads(row["payload_json"]),
@@ -223,7 +223,9 @@ class TicketStore:
 
         # Optional callback — set after construction to wire in markdown sync.
         # Signature: (ticket: Ticket) -> None
-        # Called after every create() and update().
+        # Called after the lock is released — ticket state reflects the moment
+        # of write, not necessarily current SQLite state. Acceptable for v0
+        # markdown sync. Calling inside the lock risks blocking on slow I/O.
         self._on_ticket_write: Callable[[Ticket], None] | None = None
 
         self.init_schema()
@@ -262,13 +264,11 @@ class TicketStore:
     # Use _execute() for simple fixed-SQL statements.
     # For dynamic queries (variable WHERE clauses, IN lists),
     # acquire self._lock directly as list() does.
-    def _execute(
-        self,
+    def _execute(self,
         sql: str,
-        params: tuple = (),
+        params: tuple | dict = (),
         *,
-        fetch: str | None = None,
-    ) -> list[sqlite3.Row] | sqlite3.Row | None:
+        fetch: str | None = None,) -> list[sqlite3.Row] | sqlite3.Row | None:
         with self._lock:
             cur = self._conn.cursor()
             cur.execute(sql, params)
@@ -353,13 +353,16 @@ class TicketStore:
 
     def update(self, ticket: Ticket) -> None:
         """
-        Overwrite an existing ticket by id. Raises if the ticket does
-        not exist (the id must be in the store already).
+        Overwrite an existing ticket by id.
 
-        Always updates updated_at to now before writing.
-        Calls _on_ticket_write after a successful update if set.
+        NOTE: mutates ticket.envelope.updated_at in place — the caller's
+        object will reflect the new timestamp after this call returns.
+        The touch manager (stage 8) should account for this when holding
+        ticket state across calls.
+        ...
         """
-        # Stamp updated_at — the caller shouldn't have to remember to do this
+        # Stamp updated_at — mutates the passed-in object intentionally.
+        # See docstring note above.
         ticket.envelope.updated_at = datetime.now(timezone.utc)
 
         row = _ticket_to_row(ticket)
@@ -468,6 +471,11 @@ class TicketStore:
                 (json.dumps(notes), _dt_to_str(datetime.now(timezone.utc)), ticket_id),
             )
             self._conn.commit()
+            # Trigger markdown sync if wired — fetch fresh state after commit
+            if self._on_ticket_write:
+                refreshed = self.read(ticket_id)
+                if refreshed:
+                    self._on_ticket_write(refreshed)
 
     def append_touch(self, touch: TouchEntry, ticket_id: str) -> None:
         """
