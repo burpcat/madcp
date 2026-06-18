@@ -483,6 +483,92 @@ class TicketStore:
             #     full = self.read(ticket_id)
             #     if full is not None:
             #         self._on_ticket_write(full)
+    
+    def _acquire_touch(self, ticket_id: str, agent_name: str) -> bool:
+        """
+        Atomically acquire a ticket for an agent using BEGIN IMMEDIATE.
+
+        Returns True if acquisition succeeded (ticket was queued).
+        Returns False if ticket does not exist or is not in queued status.
+
+        BEGIN IMMEDIATE takes a write lock on the database for the duration
+        of the transaction, serialising concurrent acquire attempts across
+        threads and processes.
+        """
+        now = _dt_to_str(datetime.now(timezone.utc))
+        with self._lock:
+            cur = self._conn.cursor()
+            try:
+                cur.execute("BEGIN IMMEDIATE")
+                cur.execute(
+                    "SELECT status FROM tickets WHERE id = ?",
+                    (ticket_id,),
+                )
+                row = cur.fetchone()
+                if row is None or row["status"] != "queued":
+                    self._conn.rollback()
+                    return False
+
+                cur.execute(
+                    """
+                    UPDATE tickets
+                    SET status = 'touched',
+                        assigned_to_agent = ?,
+                        touched_by = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (agent_name, agent_name, now, ticket_id),
+                )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+        # Append open touch entry (ended=None marks it as open)
+        touch = TouchEntry(
+            agent=agent_name,
+            started=now,
+            ended=now,   # will be overwritten by _close_touch_entry on release
+            summary="",  # will be overwritten on release
+        )
+        self.append_touch(touch, ticket_id)
+
+        # Sync markdown
+        if self._on_ticket_write:
+            full = self.read(ticket_id)
+            if full is not None:
+                self._on_ticket_write(full)
+
+        return True
+
+    def _close_touch_entry(
+        self,
+        ticket_id: str,
+        agent_name: str,
+        ended: str,
+        summary: str,
+    ) -> None:
+        """
+        Close the most recent open touch entry for (ticket_id, agent_name).
+
+        Updates the touch_history row with ended and summary. Called by
+        TouchManager.release() and TouchManager.forward().
+        """
+        self._execute(
+            """
+            UPDATE touch_history
+            SET ended = ?, summary = ?
+            WHERE ticket_id = ? AND agent = ?
+            AND id = (
+                SELECT id FROM touch_history
+                WHERE ticket_id = ? AND agent = ?
+                ORDER BY started DESC
+                LIMIT 1
+            )
+            """,
+            (ended, summary, ticket_id, agent_name, ticket_id, agent_name),
+        )
 
     def append_touch(self, touch: TouchEntry, ticket_id: str) -> None:
         """
