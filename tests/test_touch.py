@@ -165,6 +165,8 @@ def test_release_closes_touch_entry(tm, store):
     entry = refreshed.envelope.touch_history[0]
     assert entry.summary == "all tests pass"
     assert entry.agent == "vasishtha"
+    assert entry.ended is not None
+    assert entry.summary == "all tests pass"
 
 
 def test_release_raises_wrong_agent(tm, store):

@@ -86,7 +86,8 @@ class TouchEntry(BaseModel):
 
     agent:   str
     started: datetime
-    ended:   datetime | None = None
+    # ended:   datetime | None = None
+    ended: str | None = None
     summary: str | None = None
 
 

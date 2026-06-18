@@ -521,17 +521,27 @@ class TicketStore:
                     (agent_name, agent_name, now, ticket_id),
                 )
                 self._conn.commit()
+                # append_touch() is called after commit intentionally.
+                # Pulling it inside the transaction would deadlock since _execute() also locks.
+                # The narrow window where status=touched but touch_history is empty is benign —
+                # the scheduler dispatches on status, not touch_history.
             except Exception:
                 self._conn.rollback()
                 raise
 
+        # touch = TouchEntry(
+        #     agent=agent_name,
+        #     started=now,
+        #     ended=now,   # will be overwritten by _close_touch_entry on release
+        #     summary="",  # will be overwritten on release
+        # )
         # Append open touch entry (ended=None marks it as open)
         touch = TouchEntry(
-            agent=agent_name,
-            started=now,
-            ended=now,   # will be overwritten by _close_touch_entry on release
-            summary="",  # will be overwritten on release
-        )
+        agent=agent_name,
+        started=now,
+        ended=None,  # open touch; set by _close_touch_entry on release
+        summary="",
+    )
         self.append_touch(touch, ticket_id)
 
         # Sync markdown
