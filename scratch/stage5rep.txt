@@ -1,0 +1,85 @@
+
+============================================================
+  §1 — Imports
+============================================================
+  [PASS] All six modules import without error
+  [PASS] KRISHNAS has 24 entries, starts with Adi Purusha, ends with Hamsa — 24 entries, [Adi Purusha … Hamsa]
+  [PASS] All 7 pool constants exist and are non-empty lists — all 7 pools present (KRISHNAS=24, HEROES=10, GRAHA=9, GUARDIANS=8, RISHIS=8, PEETHAS=8, VAHANAS=8)
+
+============================================================
+  §2 — Envelope
+============================================================
+  [PASS] Envelope.created_by_agent defaults to 'param-aatma' — created_by_agent='param-aatma'
+  [PASS] Envelope.mtap defaults to True — mtap=True
+  [PASS] Envelope.failure_notes and touch_history default to [] — failure_notes=[], touch_history=[]
+  [PASS] All 8 status values are accepted by Envelope — all 8 statuses accepted
+  [PASS] Invalid status 'banana' raises an exception — raised Exception as expected
+  [FAIL] Invalid status 'banana' raises an exception
+         ValidationError: 1 validation error for Envelope
+status
+  Input should be 'queued', 'touched', 'in_progress', 'done', 'failed', 'killed', 'forwarded' or 'aborted' [type=enum, input_value='banana', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+Traceback (most recent call last):
+  File "/Users/avinash/Documents/github/madhu/scratch/c1_ontology_smoke.py", line 45, in check
+    result = fn()
+  File "/Users/avinash/Documents/github/madhu/scratch/c1_ontology_smoke.py", line 204, in _invalid_status
+    Envelope(tier_name="Hamsa", tier_level=24, status="banana")
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/avinash/Documents/github/madhu/.venv/lib/python3.14/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Envelope
+status
+  Input should be 'queued', 'touched', 'in_progress', 'done', 'failed', 'killed', 'forwarded' or 'aborted' [type=enum, input_value='banana', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+  [PASS] Ticket model_dump → model_validate roundtrip is lossless — ticket id=3dbec191… survived roundtrip
+
+============================================================
+  §3 — FunctionSpec
+============================================================
+  [PASS] Valid FunctionSpec constructs without error — type='function_spec', schema_version='1.0'
+  [PASS] function_name='ReverseString' (uppercase) is rejected — raised Exception as expected
+  [PASS] function_name='1reverse' (leading digit) is rejected — raised Exception as expected
+  [PASS] function_name='reverse-string' (hyphen) is rejected — raised Exception as expected
+  [PASS] signature not containing function_name is rejected — raised Exception as expected
+  [PASS] examples=[] (empty list) is rejected — raised Exception as expected
+  [PASS] constraints='single string' (wrong type) is rejected — raised Exception as expected
+
+============================================================
+  §4 — Migrations
+============================================================
+  [PASS] migrate() upgrades a 0.9 ticket to 1.0 without error — 0.9 → 1.0
+  [PASS] migrate() on a 1.0 ticket is idempotent — 1.0 → 1.0 (no-op confirmed)
+
+============================================================
+  §5 — Naming service
+============================================================
+  [FAIL] NamingService generates 8 unique lowercase names from RISHIS pool
+         AttributeError: 'sqlite3.Row' object has no attribute 'envelope'
+Traceback (most recent call last):
+  File "/Users/avinash/Documents/github/madhu/scratch/c1_ontology_smoke.py", line 45, in check
+    result = fn()
+  File "/Users/avinash/Documents/github/madhu/scratch/c1_ontology_smoke.py", line 403, in _naming_generates_8_unique
+    name = svc.generate("Hamsa")
+  File "/Users/avinash/Documents/github/madhu/madhu/naming.py", line 136, in generate
+    in_use = self._get_in_use(tier_name)
+AttributeError: 'sqlite3.Row' object has no attribute 'envelope'
+  [PASS] NamingService raises NamingExhausted when all pool names are in use
+
+============================================================
+  §6 — SQLite schema
+============================================================
+  [PASS] Tables 'tickets' and 'touch_history' exist after init — tables found: ['sqlite_sequence', 'tickets', 'touch_history']
+  [PASS] All 3 indexes exist after init — indexes found: ['idx_tickets_assigned', 'idx_tickets_status', 'idx_tickets_tier', 'sqlite_autoindex_tickets_1']
+  [PASS] All 8 status values are insertable (no CHECK constraint blocks 'aborted') — all 8 statuses inserted successfully
+  [PASS] init_schema() is idempotent across calls and re-opens — init_schema() called 3x + file re-opened — no errors
+
+============================================================
+  §7 — Summary
+============================================================
+
+  Checks run:    25
+  Passed:        23
+  Failed:        2
+
+  ✗ 2 check(s) failed. See output above.
+
