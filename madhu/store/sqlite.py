@@ -343,8 +343,10 @@ class TicketStore:
         ticket.envelope.touch_history = [
             TouchEntry(
                 agent=r["agent"],
-                started=_str_to_dt(r["started"]),
-                ended=_str_to_dt(r["ended"]),
+                # started=_str_to_dt(r["started"]),
+                started=r["started"],
+                # ended=_str_to_dt(r["ended"]),
+                ended=r["ended"],
                 summary=r["summary"],
             )
             for r in (touch_rows or [])
