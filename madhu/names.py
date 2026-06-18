@@ -79,18 +79,3 @@ VAHANAS: list[str] = [
     "Garuda", "Nandi", "Hamsa", "Makara",
     "Simha", "Vyaghra", "Vrishabha", "Mushika",
 ]
-
-# ---------------------------------------------------------------------------
-# Pool assignment map — consumed by the naming service
-# ---------------------------------------------------------------------------
-
-# Maps tier_name → the pool to draw worker names from.
-# Extend this dict when activating intermediate tiers.
-TIER_POOL: dict[str, list[str]] = {
-    "Hamsa": RISHIS,
-    # Future intermediate tiers will be assigned here:
-    # "Kalki":    HEROES,
-    # "Buddha":   GRAHA,
-    # "Krishna":  GUARDIANS,
-    # etc.
-}

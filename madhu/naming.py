@@ -114,14 +114,15 @@ class NamingService:
         """
         Generate a unique agent name for a worker at the given tier.
 
-        Picks a random name from the tier's pool, checks for collision,
-        and retries up to MAX_ATTEMPTS times. Raises NamingExhausted
-        if all attempts collide.
+        Shuffles the pool without replacement rather than sampling with
+        replacement — this guarantees a free name is found in at most
+        len(pool) attempts if one exists, removing the probabilistic
+        failure mode of random.choice with a near-exhausted pool.
 
         The name is lowercased if tier_name is the current leaf tier.
 
         Args:
-            tier_name: Must be a value from KRISHNAS. Must have an entry
+            tier_name: Must be a value from KRISHNAS and have an entry
                        in TIER_POOL_MAP.
 
         Returns:
@@ -135,20 +136,23 @@ class NamingService:
         in_use = self._get_in_use(tier_name)
         is_leaf = (tier_name == self._leaf_tier)
 
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            candidate = random.choice(pool)
+        # Shuffle without replacement — iterate through a randomised copy
+        # of the pool. This guarantees we find a free name in at most
+        # len(pool) attempts if one exists, unlike random.choice which
+        # samples with replacement and can exhaust MAX_ATTEMPTS even when
+        # free names remain.
+        shuffled = random.sample(pool, len(pool))
+        for candidate in shuffled:
             name = candidate.lower() if is_leaf else candidate
-
             if name not in in_use:
                 return name
 
-        # All attempts collided — pool is exhausted for this tier.
         raise NamingExhausted(
-            f"Could not generate a unique name for tier {tier_name!r} "
-            f"after {MAX_ATTEMPTS} attempts. "
-            f"Pool size: {len(pool)}, names in use: {len(in_use)}. "
+            f"Could not generate a unique name for tier {tier_name!r}. "
+            f"All {len(pool)} names in the pool are currently in use. "
             f"Check max_parallel setting for this tier."
         )
+
 
     def _get_pool(self, tier_name: str) -> list[str]:
         """
@@ -168,10 +172,12 @@ class NamingService:
         """
         Query the store for agent names currently active in this tier.
         A name is in use if any ticket in the tier has an active status
-        and assigned_to_agent matches that name.
+        and assigned_to_agent set.
 
-        Returns a set of lowercase name strings (since leaf names are
-        lowercased, and the store records whatever name was assigned).
+        # Normalise to lowercase — leaf tier names are always stored
+        # lowercase because the naming service lowercases at generation.
+        # The .lower() here is defensive for future non-leaf tiers that
+        # might share a pool with mixed-case stored names.
         """
         active_tickets = self._store.list(
             tier=tier_name,
