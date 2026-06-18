@@ -310,7 +310,8 @@ class TicketStore:
         """
         self._execute(sql, row)
         if self._on_ticket_write:
-            self._on_ticket_write(ticket)
+            # self._on_ticket_write(ticket)
+            self._on_ticket_write(self.read(ticket.envelope.id))
         return ticket.envelope.id
 
     def read(self, ticket_id: str) -> Ticket | None:
@@ -386,7 +387,8 @@ class TicketStore:
         """
         self._execute(sql, row)
         if self._on_ticket_write:
-            self._on_ticket_write(ticket)
+            # self._on_ticket_write(ticket)
+            self._on_ticket_write(self.read(ticket.envelope.id))
 
     def list(
         self,
@@ -476,6 +478,11 @@ class TicketStore:
                 refreshed = self.read(ticket_id)
                 if refreshed:
                     self._on_ticket_write(refreshed)
+            
+            # if self._on_ticket_write:
+            #     full = self.read(ticket_id)
+            #     if full is not None:
+            #         self._on_ticket_write(full)
 
     def append_touch(self, touch: TouchEntry, ticket_id: str) -> None:
         """
@@ -498,6 +505,11 @@ class TicketStore:
                 touch.summary,
             ),
         )
+
+        if self._on_ticket_write:
+            full = self.read(touch.ticket_id)  # or however your stage 6 identifies the ticket
+            if full is not None:
+                self._on_ticket_write(full)
 
     def close(self) -> None:
         """Close the database connection. Safe to call multiple times."""
