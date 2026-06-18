@@ -185,7 +185,7 @@ class TicketStore:
         status_in: set[str] | None = None,
         tier: str | None = None,
         assigned_to: str | None = None,
-    ) -> list:
+    ) -> "list[sqlite3.Row]":  # TODO stage 6: becomes list[Ticket] after deserialisation
         """
         Query tickets with optional filters. Returns raw sqlite3.Row
         objects at this stage — stage 6 will add deserialisation.
@@ -208,7 +208,7 @@ class TicketStore:
             # Build an IN clause with one ? placeholder per status value.
             placeholders = ",".join("?" * len(status_in))
             conditions.append(f"status IN ({placeholders})")
-            params.extend(sorted(status_in))  # sorted for deterministic queries
+            params.extend(sorted(status_in))  # sort for deterministic query plans and reproducible test behaviour
         elif status is not None:
             conditions.append("status = ?")
             params.append(status)

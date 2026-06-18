@@ -5,6 +5,10 @@ Stage 5: schema initialisation and list() interface only.
 Stage 6 adds: CRUD round-trips, migration-on-read, failure note appending.
 
 All tests use an in-memory SQLite database — no files written to disk.
+
+Note: several tests access store._conn and store._lock directly.
+This coupling to private internals is intentional for a storage layer test —
+internal schema state is exactly what these tests verify.
 """
 
 from __future__ import annotations
