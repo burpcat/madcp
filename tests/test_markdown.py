@@ -66,14 +66,14 @@ def make_ticket(envelope_kwargs=None, payload=None, result=None) -> Ticket:
     env = make_envelope(**(envelope_kwargs or {}))
     if payload is None:
         payload = FunctionSpec(
-            function_name="add_two",
-            signature="def add_two(a: int, b: int) -> int",
-            docstring="Return a + b.",
-            constraints=["must handle negative numbers"],
-            examples=[{"input": {"a": 1, "b": 2}, "output": 3}],
-            imports_allowed=[],
+        function_name="add_two",
+        signature="def add_two(a: int, b: int) -> int",
+        docstring="Return a + b.",
+        constraints=["must handle negative numbers"],
+        examples=[{"input": "a=1, b=2", "output": "3"}],
+        imports_allowed=[],
         )
-    return Ticket(envelope=env, payload=payload, result=result)
+    return Ticket(envelope=env, payload=payload.model_dump(), result=result)
 
 
 @pytest.fixture
