@@ -285,7 +285,7 @@ class Scheduler:
         now = time.monotonic()
         timed_out = []
 
-        for ticket_id, (proc, start_time, tier_name) in self._active.items():
+        for ticket_id, (proc, start_time, tier_name, agent_name) in self._active.items():
             try:
                 tier_config = self._tier_registry.get(tier_name)
             except KeyError:
@@ -480,7 +480,7 @@ class Scheduler:
 
         # Count active processes per tier from current _active state
         active_by_tier: dict[str, int] = {}
-        for _, (_, __, tier_name) in self._active.items():
+        for _, (_, __, tier_name, ___) in self._active.items():
             active_by_tier[tier_name] = active_by_tier.get(tier_name, 0) + 1
 
         for ticket in queued:
@@ -616,7 +616,7 @@ class Scheduler:
             f"[scheduler] grace period expired; terminating {len(self._active)} worker(s)",
             file=sys.stderr,
         )
-        for ticket_id, (proc, _, __) in list(self._active.items()):
+        for ticket_id, (proc, _, __, agent_name) in list(self._active.items()):
             try:
                 os.kill(proc.pid, signal.SIGTERM)
             except (ProcessLookupError, OSError):
@@ -625,7 +625,7 @@ class Scheduler:
         time.sleep(_SIGKILL_GRACE)
 
         # SIGKILL any still alive, mark tickets killed
-        for ticket_id, (proc, _, __) in list(self._active.items()):
+        for ticket_id, (proc, _, __, agent_name) in list(self._active.items()):
             if proc.is_alive():
                 try:
                     os.kill(proc.pid, signal.SIGKILL)
