@@ -1,0 +1,9 @@
+tier_name: "Adi Purusha"
+tier_level: 1
+default_agent_name: "param-aatma"
+accepts_external: true
+mtap: false
+max_parallel: 1
+allowed_payload_types: []
+failure_policy:
+  max_forwards: 0
