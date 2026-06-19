@@ -100,47 +100,29 @@ def _lineage_path(
 # JSONL logging (minimal, pre-stage-13)
 # ---------------------------------------------------------------------------
 
-#pre stage 13
-# def _log(event_type: str, ticket_id: str | None = None, **details: Any) -> None:
-#     """
-#     Write a JSONL log entry to logs/runs.jsonl.
+def _log(event_type: str, ticket_id: str | None = None, **details: Any) -> None:
+    """
+    Write a JSONL log entry to logs/runs.jsonl.
 
-#     Minimal implementation — stage 13 replaces this with the full
-#     observability.jsonl module. Uses stderr as fallback if file write fails.
-#     """
-#     import json
-#     from pathlib import Path
+    Minimal implementation — stage 13 replaces this with the full
+    observability.jsonl module. Uses stderr as fallback if file write fails.
+    """
+    import json
+    from pathlib import Path
 
-#     entry = {
-#         "timestamp": _now(),
-#         "event_type": event_type,
-#         "ticket_id": ticket_id,
-#         "details": details,
-#     }
-#     try:
-#         log_path = Path("logs/runs.jsonl")
-#         log_path.parent.mkdir(parents=True, exist_ok=True)
-#         with log_path.open("a", encoding="utf-8") as f:
-#             f.write(json.dumps(entry) + "\n")
-#     except Exception as exc:
-#         print(f"[scheduler] log write failed: {exc}", file=sys.stderr)
-
-def _log(
-    self,
-    event_type: str,
-    *,
-    ticket_id: str | None = None,
-    agent_name: str | None = None,
-    details: dict | None = None,
-) -> None:
-    """Delegate to RunLogger if one is configured; silently no-op otherwise."""
-    if self._logger is not None:
-        self._logger.log(
-            event_type,
-            ticket_id=ticket_id,
-            agent_name=agent_name,
-            details=details,
-        )
+    entry = {
+        "timestamp": _now(),
+        "event_type": event_type,
+        "ticket_id": ticket_id,
+        "details": details,
+    }
+    try:
+        log_path = Path("logs/runs.jsonl")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as exc:
+        print(f"[scheduler] log write failed: {exc}", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Scheduler
@@ -176,6 +158,28 @@ class Scheduler:
         self._touch_manager = TouchManager(store)
         self._logger = run_logger
         self._log_path: str | None = str(run_logger._path) if run_logger is not None else None
+    
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
+    def _log(
+        self,
+        event_type: str,
+        *,
+        ticket_id: str | None = None,
+        agent_name: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        """Delegate to RunLogger if configured; silently no-op otherwise."""
+        if self._logger is not None:
+            self._logger.log(
+                event_type,
+                ticket_id=ticket_id,
+                agent_name=agent_name,
+                details=details,
+            )
+
 
     # ------------------------------------------------------------------
     # Public interface

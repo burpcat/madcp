@@ -66,24 +66,23 @@ def main() -> int:
     # NamingService
     naming = NamingService(store)
 
-    # Scheduler — try a few constructor shapes
-    try:
-        scheduler = Scheduler(store, registry, naming)
-    except TypeError:
-        try:
-            scheduler = Scheduler(
-                store=store, tier_registry=registry, naming_service=naming
-            )
-        except TypeError as e:
-            print(f"FATAL: cannot construct Scheduler — {e}", file=sys.stderr)
-            return 2
-
-    # If your Scheduler accepts a log_path or similar, set it here:
+    # RunLogger — construct before Scheduler so it can be passed in
+    run_logger = None
     if log_path:
-        for attr in ("log_path", "_log_path", "jsonl_path"):
-            if hasattr(scheduler, attr):
-                setattr(scheduler, attr, log_path)
-                break
+        from madhu.observability.jsonl import RunLogger
+        run_logger = RunLogger(log_path)
+
+    # Scheduler
+    try:
+        scheduler = Scheduler(
+            store=store,
+            tier_registry=registry,
+            naming_service=naming,
+            run_logger=run_logger,
+        )
+    except TypeError as e:
+        print(f"FATAL: cannot construct Scheduler — {e}", file=sys.stderr)
+        return 2
 
     print("launcher: starting scheduler.run()", file=sys.stderr)
     scheduler.run()
@@ -92,3 +91,12 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+"""
+mkdir -p /tmp/test-tickets && \
+MADHU_DB_PATH=/tmp/test.db \
+MADHU_TICKETS_DIR=/tmp/test-tickets \
+MADHU_LOG_PATH=/tmp/test.jsonl \
+python scratch/c3_scheduler_launcher.py
+"""

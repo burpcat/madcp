@@ -266,6 +266,7 @@ def run_worker(
     db_path: str,
     provider_name: str = _DEFAULT_PROVIDER,
     provider_config: dict | None = None,
+    log_path: str | None = None,
 ) -> None:
     """
     Entry point for multiprocessing.Process.
