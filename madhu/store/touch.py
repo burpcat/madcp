@@ -189,7 +189,9 @@ class TouchManager:
 
         # Kill the original ticket
         env_dict = ticket.envelope.model_dump()
-        env_dict["status"] = "killed"
+        # env_dict["status"] = "killed"
+        #AI FIX
+        env_dict["status"] = "forwarded"
         env_dict["touched_by"] = None
         env_dict["updated_at"] = now
 
