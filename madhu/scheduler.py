@@ -295,9 +295,9 @@ class Scheduler:
             elapsed = now - start_time
 
             if elapsed > timeout and proc.is_alive():
-                timed_out.append((ticket_id, proc, tier_name, int(elapsed)))
+                timed_out.append((ticket_id, proc, tier_name, agent_name, int(elapsed)))
 
-        for ticket_id, proc, tier_name, elapsed in timed_out:
+        for ticket_id, proc, tier_name, agent_name, elapsed in timed_out:
             try:
                 os.kill(proc.pid, signal.SIGKILL)
             except (ProcessLookupError, OSError):
@@ -311,6 +311,7 @@ class Scheduler:
             try:
                 self._touch_manager.forward(
                     ticket_id,
+                    agent_name,
                     reason=f"worker exceeded {elapsed}s timeout",
                     raw_excerpt="",
                 )

@@ -168,10 +168,12 @@ class HamsaWorker(BaseWorker):
         db_path: str,
         provider_name: str = _DEFAULT_PROVIDER,
         provider_config: dict | None = None,
+        logger=None,
     ) -> None:
-        super().__init__(ticket_id, agent_name, db_path)
+        super().__init__(ticket_id, agent_name, db_path, logger=logger)
         self._provider_name = provider_name
         self._provider_config = provider_config or {}
+        # self._logger is set by BaseWorker.__init__ — do not set again here
     
     def _make_provider(self):
         """
@@ -235,15 +237,36 @@ class HamsaWorker(BaseWorker):
         prompt = _build_prompt(payload)
 
         # Call provider — raises ProviderError on network/HTTP failure
+        import time as _time
+        _model = self._provider_config.get("model", _DEFAULT_MODEL)
+        if self._logger is not None:
+            self._logger.log(
+                "ollama_call",
+                ticket_id=self.ticket_id,
+                agent_name=self.agent_name,
+                details={"model": _model, "prompt_len": len(prompt)},
+            )
+        _t0 = _time.monotonic()
         try:
             raw_response = provider.generate(
                 prompt=prompt,
-                model=self._provider_config.get("model", _DEFAULT_MODEL),
+                model=_model,
                 temperature=self._provider_config.get("temperature", _DEFAULT_TEMPERATURE),
                 timeout=self._provider_config.get("timeout", _DEFAULT_TIMEOUT),
             )
         except ProviderError as exc:
             raise WorkerFailure(reason=str(exc), raw_excerpt="")
+        
+        if self._logger is not None:
+            self._logger.log(
+                "ollama_result",
+                ticket_id=self.ticket_id,
+                agent_name=self.agent_name,
+                details={
+                    "response_len": len(raw_response),
+                    "elapsed_s": round(_time.monotonic() - _t0, 3),
+                },
+            )
 
         # Clean and validate
         cleaned = _strip_channel_markers(raw_response)
@@ -268,25 +291,14 @@ def run_worker(
     provider_config: dict | None = None,
     log_path: str | None = None,
 ) -> None:
-    """
-    Entry point for multiprocessing.Process.
-
-    Module-level function (not a method) — required for pickling on macOS
-    (spawn context). Provider name and config now passed from the scheduler
-    via TierRegistry — closes the Stage 9 wiring gap noted in the builder report.
-
-    Args:
-        ticket_id: UUID of the ticket to work
-        agent_name: lineage path assigned by the scheduler (e.g. AdHa-vasishtha)
-        db_path: path to palakudu.db
-        provider_name: provider key from PROVIDER_REGISTRY (e.g. "ollama")
-        provider_config: dict of provider kwargs (model, endpoint, temperature, timeout)
-    """
+    from madhu.observability.jsonl import RunLogger
+    logger = RunLogger(log_path) if log_path is not None else None
     worker = HamsaWorker(
         ticket_id=ticket_id,
         agent_name=agent_name,
         db_path=db_path,
         provider_name=provider_name,
         provider_config=provider_config or {},
+        logger=logger,
     )
     worker.run()

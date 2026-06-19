@@ -65,7 +65,7 @@ class TouchManager:
         """
         self.store = store
 
-    def acquire(self, ticket_id: str, agent_name: str) -> bool:
+    def acquire(self, ticket_id: str, agent_name: str, logger=None) -> bool:
         """
         Atomically claim a ticket for an agent.
 
@@ -84,7 +84,11 @@ class TouchManager:
         TicketStore._acquire_touch(). Two concurrent callers will serialise;
         exactly one will see status='queued' and succeed.
         """
-        return self.store._acquire_touch(ticket_id, agent_name)
+        result = self.store._acquire_touch(ticket_id, agent_name)
+        if result and logger is not None:
+            logger.log("touch_acquire", ticket_id=ticket_id, agent_name=agent_name)
+        return result
+
 
     def release(
         self,
@@ -92,6 +96,7 @@ class TouchManager:
         agent_name: str,
         summary: str,
         status_after: str,
+        logger=None
     ) -> None:
         """
         Close the open touch entry and set the ticket's terminal status.
@@ -144,12 +149,21 @@ class TouchManager:
             result=ticket.result,
         )
         self.store.update(updated)
+        if logger is not None:
+            logger.log(
+                "touch_release",
+                ticket_id=ticket_id,
+                agent_name=agent_name,
+                details={"status_after": status_after, "summary": summary[:200]},
+            )
 
     def forward(
         self,
         ticket_id: str,
+        agent_name: str,
         reason: str,
         raw_excerpt: str,
+        logger=None
     ) -> str:
         """
         Kill the current ticket and create a forwarded successor.
@@ -238,5 +252,12 @@ class TouchManager:
             result=None,
         )
         self.store.create(new_ticket)
-
+        if logger is not None:
+            logger.log(
+                "forward",
+                ticket_id=ticket_id,
+                agent_name=agent_name,
+                details={"new_ticket_id": new_id, "reason": reason},
+            )
         return new_id
+    

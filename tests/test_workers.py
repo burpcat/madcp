@@ -378,7 +378,7 @@ def test_base_run_success_calls_release():
         worker = SuccessWorker("t-ok", "vasishtha", ":memory:")
         worker.run()
 
-    tm.release.assert_called_once_with("t-ok", "vasishtha", "wrote the function", "done")
+    tm.release.assert_called_once_with("t-ok", "vasishtha", "wrote the function", "done", logger=None)
     tm.forward.assert_not_called()
 
 
@@ -398,7 +398,7 @@ def test_base_run_worker_failure_calls_forward():
         worker = FailWorker("t-fail", "vasishtha", ":memory:")
         worker.run()
 
-    tm.forward.assert_called_once_with("t-fail", "bad output", "raw junk")
+    tm.forward.assert_called_once_with("t-fail", "vasishtha", "bad output", "raw junk", logger=None)
     tm.release.assert_not_called()
 
 

@@ -199,7 +199,7 @@ def test_forward_sets_original_to_forwarded(tm, store):
     """forward() sets original ticket status to 'forwarded', not 'killed'."""
     _insert(store, ticket_id="t-009")
     tm.acquire("t-009", "vasishtha")
-    tm.forward("t-009", "Gemma returned junk", "def foo(): ...")
+    tm.forward("t-009", "vasishtha", "Gemma returned junk", "def foo(): ...")
     original = store.read("t-009")
     assert original.envelope.status == "forwarded"
 
@@ -208,7 +208,7 @@ def test_forward_creates_new_queued_ticket(tm, store):
     """forward() creates a new ticket with status=queued."""
     _insert(store, ticket_id="t-010")
     tm.acquire("t-010", "vasishtha")
-    new_id = tm.forward("t-010", "parse error", "...")
+    new_id = tm.forward("t-010", "vasishtha", "parse error", "...")
     new_ticket = store.read(new_id)
     assert new_ticket is not None
     assert new_ticket.envelope.status == "queued"
@@ -218,7 +218,7 @@ def test_forward_links_via_forwarded_from(tm, store):
     """New ticket's forwarded_from points to the killed ticket."""
     _insert(store, ticket_id="t-011")
     tm.acquire("t-011", "vasishtha")
-    new_id = tm.forward("t-011", "reason", "excerpt")
+    new_id = tm.forward("t-011", "vasishtha", "reason", "excerpt")
     new_ticket = store.read(new_id)
     assert new_ticket.envelope.forwarded_from == "t-011"
 
@@ -227,7 +227,7 @@ def test_forward_appends_failure_note(tm, store):
     """New ticket has one FailureNote from the forward."""
     _insert(store, ticket_id="t-012")
     tm.acquire("t-012", "vasishtha")
-    new_id = tm.forward("t-012", "Gemma multi-function output", "def a(): ...\ndef b(): ...")
+    new_id = tm.forward("t-012", "vasishtha", "Gemma multi-function output", "def a(): ...\ndef b(): ...")
     new_ticket = store.read(new_id)
     assert len(new_ticket.envelope.failure_notes) == 1
     note = new_ticket.envelope.failure_notes[0]
@@ -245,10 +245,10 @@ def test_forward_chain_accumulates_failure_notes(tm, store):
     """
     _insert(store, ticket_id="t-013")
     tm.acquire("t-013", "vasishtha")
-    second_id = tm.forward("t-013", "first failure", "bad output 1")
+    second_id = tm.forward("t-013", "vasishtha", "first failure", "bad output 1")
 
     tm.acquire(second_id, "agastya")
-    third_id = tm.forward(second_id, "second failure", "bad output 2")
+    third_id = tm.forward(second_id, "agastya", "second failure", "bad output 2")
 
     third = store.read(third_id)
     assert len(third.envelope.failure_notes) == 2
@@ -260,7 +260,7 @@ def test_forward_preserves_payload(tm, store):
     """Forwarded ticket carries the same payload as the original."""
     _insert(store, ticket_id="t-014")
     tm.acquire("t-014", "vasishtha")
-    new_id = tm.forward("t-014", "reason", "excerpt")
+    new_id = tm.forward("t-014", "vasishtha", "reason", "excerpt")
     original = store.read("t-014")
     new_ticket = store.read(new_id)
     assert new_ticket.payload == original.payload
@@ -269,7 +269,7 @@ def test_forward_preserves_payload(tm, store):
 def test_forward_raises_nonexistent(tm):
     """forward() raises ValueError if ticket does not exist."""
     with pytest.raises(ValueError, match="does not exist"):
-        tm.forward("no-such-ticket", "reason", "excerpt")
+        tm.forward("no-such-ticket", "vasishtha", "reason", "excerpt")
 
 
 def test_forward_different_agents_on_chain(tm, store):
@@ -279,7 +279,7 @@ def test_forward_different_agents_on_chain(tm, store):
     """
     _insert(store, ticket_id="t-015")
     tm.acquire("t-015", "vasishtha")
-    second_id = tm.forward("t-015", "reason", "excerpt")
+    second_id = tm.forward("t-015", "vasishtha", "reason", "excerpt")
 
     # agastya picks up the forwarded ticket — different agent, should succeed
     result = tm.acquire(second_id, "agastya")
