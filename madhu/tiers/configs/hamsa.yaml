@@ -5,6 +5,7 @@ pool: "RISHIS"
 accepts_external: false
 mtap: true
 max_parallel: 2
+worker_timeout_seconds: 180
 allowed_payload_types:
   - "function_spec"
 worker_module: "madhu.workers.hamsa"

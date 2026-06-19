@@ -1,5 +1,6 @@
 # tests/test_scheduler.py
 from __future__ import annotations
+import time
 
 """
 Tests for madhu/scheduler.py — Scheduler and _lineage_path.
@@ -169,7 +170,11 @@ def test_reap_dead_removes_finished_process():
     live_proc = MagicMock()
     live_proc.is_alive.return_value = True
 
-    scheduler._active = {"t-dead": dead_proc, "t-live": live_proc}
+    # scheduler._active = {"t-dead": dead_proc, "t-live": live_proc}
+    scheduler._active = {
+    "t-dead": (dead_proc, time.monotonic(), "Hamsa"),
+    "t-live": (live_proc, time.monotonic(), "Hamsa"),
+}
     scheduler._reap_dead()
 
     assert "t-dead" not in scheduler._active
@@ -265,7 +270,8 @@ def test_dispatch_skips_already_active(tmp_path):
 
     existing_proc = MagicMock()
     existing_proc.is_alive.return_value = True
-    scheduler._active["t-active-001"] = existing_proc
+    # scheduler._active["t-active-001"] = existing_proc
+    scheduler._active["t-active-001"] = (existing_proc, time.monotonic(), "Hamsa")
 
     with patch("madhu.scheduler.multiprocessing.Process") as mock_proc_cls:
         scheduler._dispatch_queued()
