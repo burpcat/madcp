@@ -28,6 +28,20 @@ logging.basicConfig(
 )
 log = logging.getLogger("madhu.server")
 
+def _last_terminal_at(store: TicketStore) -> str | None:
+    """Return the most recent updated_at across all terminal-state tickets, or None.
+
+    Iterates terminal statuses individually because store.list() takes one status
+    at a time. ISO-8601 strings compare correctly as plain strings.
+    """
+    latest: str | None = None
+    for status in ("done", "failed", "killed", "aborted"):
+        for ticket in store.list(status=status):
+            ts = ticket.envelope.updated_at
+            if latest is None or ts > latest:
+                latest = ts
+    return latest
+
 # ---------------------------------------------------------------------------
 # Global services — None until main() initialises them.
 # Tool handlers guard against None and return structured error dicts if called
@@ -36,10 +50,12 @@ log = logging.getLogger("madhu.server")
 _store: TicketStore | None = None
 _scheduler: Scheduler | None = None
 _scheduler_thread: threading.Thread | None = None
+_tier_registry: TierRegistry | None = None
 
 # ---------------------------------------------------------------------------
 # MCP server
 # ---------------------------------------------------------------------------
+
 mcp_server = FastMCP("MadCP")
 
 
@@ -178,6 +194,39 @@ async def check_ticket(id: str) -> dict:  # noqa: A002
 
     return json.loads(ticket.model_dump_json())
 
+@mcp_server.tool()
+async def health_check() -> dict:
+    """Quick server sanity check for Opus orchestrators. Returns scheduler
+    liveness, queue counts, active tier names, and the timestamp of the most
+    recent terminal ticket."""
+    alive = _scheduler_thread.is_alive() if _scheduler_thread is not None else False
+
+    if _store is not None:
+        queue_depth = len(_store.list(status="queued"))
+        in_progress_count = (
+            len(_store.list(status="touched"))
+            + len(_store.list(status="in_progress"))
+        )
+        last_terminal = _last_terminal_at(_store)
+    else:
+        queue_depth = 0
+        in_progress_count = 0
+        last_terminal = None
+
+    tiers = (
+        [tc.tier_name for tc in _tier_registry.list_active()]
+        if _tier_registry is not None
+        else []
+    )
+
+    return {
+        "server_status": "ok",
+        "scheduler_alive": alive,
+        "queue_depth": queue_depth,
+        "in_progress_count": in_progress_count,
+        "active_tiers": tiers,
+        "last_terminal_at": last_terminal,
+    }
 
 # ---------------------------------------------------------------------------
 # Shutdown
@@ -249,6 +298,7 @@ def main() -> None:
     _store = store
     _scheduler = scheduler
     _scheduler_thread = scheduler_thread
+    _tier_registry = tier_registry
 
     # --- Signal handlers — must be installed from the main thread ---
     def _handle_signal(signum: int, frame: object) -> None:
