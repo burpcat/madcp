@@ -61,6 +61,7 @@ class TierConfig(BaseModel):
     accepts_external: bool = False
     mtap: bool = True
     max_parallel: int = 1
+    worker_timeout_seconds: int = 180
     allowed_payload_types: list[str] = Field(default_factory=list)
     pool: str | None = None
     worker_module: str | None = None
