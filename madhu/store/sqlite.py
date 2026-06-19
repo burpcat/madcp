@@ -605,7 +605,8 @@ class TicketStore:
         )
 
         if self._on_ticket_write:
-            full = self.read(touch.ticket_id)  # or however your stage 6 identifies the ticket
+            full = self.read(ticket_id)
+            # full = self.read(touch.ticket_id)  # or however your stage 6 identifies the ticket
             if full is not None:
                 self._on_ticket_write(full)
 
