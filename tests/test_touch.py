@@ -195,13 +195,13 @@ def test_release_raises_nonexistent_ticket(tm):
 # forward()
 # ---------------------------------------------------------------------------
 
-def test_forward_kills_original(tm, store):
-    """forward() sets original ticket status to killed."""
+def test_forward_sets_original_to_forwarded(tm, store):
+    """forward() sets original ticket status to 'forwarded', not 'killed'."""
     _insert(store, ticket_id="t-009")
     tm.acquire("t-009", "vasishtha")
     tm.forward("t-009", "Gemma returned junk", "def foo(): ...")
     original = store.read("t-009")
-    assert original.envelope.status == "killed"
+    assert original.envelope.status == "forwarded"
 
 
 def test_forward_creates_new_queued_ticket(tm, store):
