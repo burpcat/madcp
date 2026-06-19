@@ -40,6 +40,7 @@ from madhu.schemas.envelope import Envelope, FailureNote, Ticket
 from madhu.store.sqlite import TicketStore
 from madhu.store.touch import TouchManager
 from madhu.tiers.registry import TierConfig, TierRegistry
+from madhu.observability.jsonl import RunLogger
 
 _POLL_INTERVAL = 0.5  # seconds — locked, not configurable in v0
 _SIGKILL_GRACE = 5.0  # seconds between SIGTERM and SIGKILL on forced shutdown
@@ -99,30 +100,47 @@ def _lineage_path(
 # JSONL logging (minimal, pre-stage-13)
 # ---------------------------------------------------------------------------
 
-def _log(event_type: str, ticket_id: str | None = None, **details: Any) -> None:
-    """
-    Write a JSONL log entry to logs/runs.jsonl.
+#pre stage 13
+# def _log(event_type: str, ticket_id: str | None = None, **details: Any) -> None:
+#     """
+#     Write a JSONL log entry to logs/runs.jsonl.
 
-    Minimal implementation — stage 13 replaces this with the full
-    observability.jsonl module. Uses stderr as fallback if file write fails.
-    """
-    import json
-    from pathlib import Path
+#     Minimal implementation — stage 13 replaces this with the full
+#     observability.jsonl module. Uses stderr as fallback if file write fails.
+#     """
+#     import json
+#     from pathlib import Path
 
-    entry = {
-        "timestamp": _now(),
-        "event_type": event_type,
-        "ticket_id": ticket_id,
-        "details": details,
-    }
-    try:
-        log_path = Path("logs/runs.jsonl")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception as exc:
-        print(f"[scheduler] log write failed: {exc}", file=sys.stderr)
+#     entry = {
+#         "timestamp": _now(),
+#         "event_type": event_type,
+#         "ticket_id": ticket_id,
+#         "details": details,
+#     }
+#     try:
+#         log_path = Path("logs/runs.jsonl")
+#         log_path.parent.mkdir(parents=True, exist_ok=True)
+#         with log_path.open("a", encoding="utf-8") as f:
+#             f.write(json.dumps(entry) + "\n")
+#     except Exception as exc:
+#         print(f"[scheduler] log write failed: {exc}", file=sys.stderr)
 
+def _log(
+    self,
+    event_type: str,
+    *,
+    ticket_id: str | None = None,
+    agent_name: str | None = None,
+    details: dict | None = None,
+) -> None:
+    """Delegate to RunLogger if one is configured; silently no-op otherwise."""
+    if self._logger is not None:
+        self._logger.log(
+            event_type,
+            ticket_id=ticket_id,
+            agent_name=agent_name,
+            details=details,
+        )
 
 # ---------------------------------------------------------------------------
 # Scheduler
@@ -147,15 +165,17 @@ class Scheduler:
         tier_registry: TierRegistry,
         naming_service: NamingService,
         shutdown_grace_seconds: float = 30.0,
+        run_logger: RunLogger | None = None,
     ) -> None:
         self._store = store
         self._tier_registry = tier_registry
         self._naming_service = naming_service
         self._shutdown_grace = shutdown_grace_seconds
-        # _active maps ticket_id → (Process, start_time, tier_name)
         self._active: dict[str, tuple[multiprocessing.Process, float, str]] = {}
         self._running = False
         self._touch_manager = TouchManager(store)
+        self._logger = run_logger
+        self._log_path: str | None = str(run_logger._path) if run_logger is not None else None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -314,8 +334,13 @@ class Scheduler:
             if not proc.is_alive()
         ]
         for ticket_id in finished:
-            proc, _, __ = self._active.pop(ticket_id)
+            proc, start_time, tier_name = self._active.pop(ticket_id)  # uncomment + capture tier_name
             proc.join(timeout=0)
+            self._log(
+                "worker_exit",
+                ticket_id=ticket_id,
+                details={"exit_code": proc.exitcode, "tier_name": tier_name},
+            )
 
     # ------------------------------------------------------------------
     # Dispatch
@@ -408,11 +433,18 @@ class Scheduler:
                 self._store.db_path,
                 tier_config.provider or "",
                 tier_config.provider_config,
+                self._log_path,
             ),
             daemon=False,
         )
         proc.start()
         self._active[ticket_id] = (proc, time.monotonic(), tier_config.tier_name)
+        self._log(                                          # ADD these four lines
+            "worker_spawn",
+            ticket_id=ticket_id,
+            agent_name=lineage_path,
+            details={"tier_name": tier_config.tier_name, "pid": proc.pid},
+        )
 
     # ------------------------------------------------------------------
     # Graceful shutdown
