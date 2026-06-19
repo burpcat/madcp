@@ -1,0 +1,42 @@
+================================================================
+C3 — Live worker pipeline smoke
+================================================================
+
+Pre-flight checklist:
+  - Ollama running at http://localhost:11434
+  - Configured model pulled
+  - Stage 11 (scheduler) implemented
+  - `python -m madhu.scheduler` is the correct invocation
+    (edit scheduler_cmd in this script if not)
+
+tmp dir: /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-m8j4z_vb
+db:      /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-m8j4z_vb/test.db
+log:     /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-m8j4z_vb/logs/runs.jsonl
+
+§1 — Injecting 5 tickets into fresh DB
+  injected ac673da1  (reverse_string)
+  injected 950df4d3  (to_uppercase)
+  injected 58b2e75a  (strip_whitespace)
+  injected 76f679cd  (last_word)
+  injected 553ea32f  (double_string)
+
+§2 — Starting scheduler subprocess
+
+§3 — Polling for terminal states (timeout 600s)
+  0/5 terminal after 0s
+  1/5 terminal after 5s
+  3/5 terminal after 10s
+
+§4 — Verification
+  ✓ All 5 tickets reached a terminal state
+    done: 5
+  ⚠ Could not verify MTap — no 'pid' field in spawn event details
+  ✓ Peak concurrent workers: 0 ≤ 2
+
+§5 — Stopping scheduler
+  scheduler stderr (last 500 chars): b'launcher: db=/var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-m8j4z_vb/test.db\nlauncher: tickets=/var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-m8j4z_vb/tickets\nlauncher: log=/var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-m8j4z_vb/logs/runs.jsonl\nlauncher: starting scheduler.run()\n\n[scheduler] SIGINT received \xe2\x80\x94 shutting down gracefully\n[scheduler] waiting up to 30.0s for 1 in-flight worker(s)...\n[scheduler] all workers finished cleanly\n'
+
+================================================================
+  FAILED (1 issues)
+    - No worker_spawn events in JSONL log — scheduler may not be wired to log, or workers never spawned
+================================================================
