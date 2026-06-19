@@ -277,7 +277,7 @@ def main() -> None:
 
     # --- Tier registry ---
     try:
-        tier_registry = TierRegistry()
+        tier_registry = TierRegistry(project_root / "madhu" / "tiers" / "configs")
     except Exception as exc:
         log.critical("failed to load tier configs: %s", exc)
         sys.exit(1)

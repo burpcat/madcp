@@ -334,18 +334,132 @@ class Scheduler:
         join(timeout=0) cleans up OS-level zombie processes on POSIX systems.
         """
         finished = [
-            tid for tid, (proc, _, __) in self._active.items()
+            tid for tid, (proc, _, __, ___) in self._active.items()
             if not proc.is_alive()
         ]
+        # for ticket_id in finished:
+        #     proc, start_time, tier_name = self._active.pop(ticket_id)  # uncomment + capture tier_name
+        #     proc.join(timeout=0)
+        #     self._log(
+        #         "worker_exit",
+        #         ticket_id=ticket_id,
+        #         details={"exit_code": proc.exitcode, "tier_name": tier_name},
+        #     )
         for ticket_id in finished:
-            proc, start_time, tier_name = self._active.pop(ticket_id)  # uncomment + capture tier_name
+            proc, start_time, tier_name, agent_name = self._active.pop(ticket_id)
             proc.join(timeout=0)
             self._log(
                 "worker_exit",
                 ticket_id=ticket_id,
+                agent_name=agent_name,
                 details={"exit_code": proc.exitcode, "tier_name": tier_name},
             )
+            self._handle_finished_worker(ticket_id, proc, tier_name, agent_name)
+    # ------------------------------------------------------------------
+    # Finished Worker Handler
+    # ------------------------------------------------------------------
 
+    def _handle_finished_worker(
+        self,
+        ticket_id: str,
+        proc: multiprocessing.Process,
+        tier_name: str,
+        agent_name: str,
+    ) -> None:
+        """Apply failure policy after a worker exits.
+
+        Reads the original ticket; if forwarded, locates the new ticket via
+        store.list() and checks failure_notes length against max_forwards.
+        The new ticket carries the authoritative failure_notes count — the
+        original ticket's count is always one short.
+
+        Race note: the new ticket may have already been picked up by the
+        scheduler's poll loop and transitioned to 'touched' before this
+        method calls store.list(status='queued'). In that case the list
+        returns empty and we log a warning and return — the abort check
+        will fire again when that worker exits.
+        """
+        original = self._store.read(ticket_id)
+        if original is None:
+            self._log(
+                "handle_finished_warning",
+                ticket_id=ticket_id,
+                agent_name=agent_name,
+                details={"reason": "original ticket not found in store"},
+            )
+            return
+
+        if original.envelope.status != "forwarded":
+            return  # done/failed/killed — no policy action needed
+
+        try:
+            tier_config = self._tier_registry.get(tier_name)
+        except Exception as exc:
+            self._log(
+                "handle_finished_error",
+                ticket_id=ticket_id,
+                agent_name=agent_name,
+                details={"reason": f"tier_registry.get failed: {exc}"},
+            )
+            return
+
+        max_forwards = tier_config.failure_policy.max_forwards
+
+        # Locate the new ticket via forwarded_from link (option c).
+        queued = self._store.list(status="queued")
+        new_ticket = next(
+            (t for t in queued if t.envelope.forwarded_from == ticket_id),
+            None,
+        )
+
+        if new_ticket is None:
+            # New ticket already picked up by scheduler; abort check fires
+            # on that worker's exit instead.
+            self._log(
+                "handle_finished_warning",
+                ticket_id=ticket_id,
+                agent_name=agent_name,
+                details={"reason": "new ticket not found in queued — may already be in_progress"},
+            )
+            return
+
+        # Abort condition: >= so that 3 failure_notes with max_forwards=3 aborts.
+        if len(new_ticket.envelope.failure_notes) >= max_forwards:
+            self._abort_ticket(new_ticket, agent_name=agent_name)
+        # else: leave as queued; scheduler picks it up on next poll
+    # ------------------------------------------------------------------
+    # Ticket Abort
+    # ------------------------------------------------------------------
+
+    def _abort_ticket(self, ticket: Ticket, *, agent_name: str | None = None) -> None:
+        """Set ticket status to aborted and persist.
+
+        Accepts the already-loaded Ticket object to avoid a redundant
+        store.read(). Envelope is not frozen (ConfigDict has no frozen=True)
+        so direct attribute assignment is safe.
+        """
+        ticket.envelope.status = "aborted"
+        ticket.envelope.updated_at = datetime.now(timezone.utc).isoformat()
+        try:
+            self._store.update(ticket)
+        except Exception as exc:
+            self._log(
+                "abort_error",
+                ticket_id=ticket.envelope.id,
+                agent_name=agent_name,
+                details={"reason": str(exc)},
+            )
+            return
+
+        self._log(
+            "ticket_aborted",
+            ticket_id=ticket.envelope.id,
+            agent_name=agent_name,
+            details={
+                "failure_count": len(ticket.envelope.failure_notes),
+                "forwarded_from": ticket.envelope.forwarded_from,
+            },
+        )
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
@@ -442,7 +556,8 @@ class Scheduler:
             daemon=False,
         )
         proc.start()
-        self._active[ticket_id] = (proc, time.monotonic(), tier_config.tier_name)
+        self._active[ticket_id] = (proc, time.monotonic(), tier_config.tier_name, lineage_path)
+        # self._active[ticket_id] = (proc, time.monotonic(), tier_config.tier_name)
         self._log(                                          # ADD these four lines
             "worker_spawn",
             ticket_id=ticket_id,

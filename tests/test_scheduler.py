@@ -172,8 +172,9 @@ def test_reap_dead_removes_finished_process():
 
     # scheduler._active = {"t-dead": dead_proc, "t-live": live_proc}
     scheduler._active = {
-    "t-dead": (dead_proc, time.monotonic(), "Hamsa"),
-    "t-live": (live_proc, time.monotonic(), "Hamsa"),
+    "t-dead": (dead_proc, time.monotonic(), "Hamsa", "AdHa-vasishtha"),
+    "t-live": (live_proc, time.monotonic(), "Hamsa", "AdHa-agastya"),
+    
 }
     scheduler._reap_dead()
 
