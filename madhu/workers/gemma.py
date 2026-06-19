@@ -1,5 +1,7 @@
 # madhu/workers/gemma.py
 from __future__ import annotations
+from madhu.schemas.payloads import FunctionSpec
+
 
 """
 Gemma worker — Hamsa-tier leaf worker for MadCP.
@@ -38,26 +40,30 @@ OLLAMA_TEMPERATURE = 0.2
 # Prompt construction
 # ---------------------------------------------------------------------------
 
-def _build_prompt(payload: dict) -> str:
-    """
-    Build the Ollama prompt from a function_spec payload dict.
-
-    Instructs Gemma to output exactly one Python function definition —
-    no prose, no markdown fences, no explanations.
-    """
-    name = payload.get("function_name", "")
-    signature = payload.get("signature", "")
-    docstring = payload.get("docstring", "")
-    constraints = payload.get("constraints", [])
-    examples = payload.get("examples", [])
-    imports_allowed = payload.get("imports_allowed", [])
+def _build_prompt(payload) -> str:
+    """Build the Ollama prompt from a FunctionSpec instance."""
+    from madhu.schemas.payloads import FunctionSpec
+    if isinstance(payload, dict):
+        # fallback for direct dict calls (smoke tests etc.)
+        name = payload.get("function_name", "")
+        signature = payload.get("signature", "")
+        docstring = payload.get("docstring", "")
+        constraints = payload.get("constraints", [])
+        examples = payload.get("examples", [])
+        imports_allowed = payload.get("imports_allowed", [])
+    else:
+        name = payload.function_name
+        signature = payload.signature
+        docstring = payload.docstring
+        constraints = payload.constraints
+        examples = payload.examples
+        imports_allowed = payload.imports_allowed
 
     constraint_block = "\n".join(f"- {c}" for c in constraints) if constraints else "none"
     example_block = "\n".join(
-        f"  input: {ex.get('input', '')}  →  output: {ex.get('output', '')}"
+        f"  input: {ex.get('input', '') if isinstance(ex, dict) else ex}  →  output: {ex.get('output', '') if isinstance(ex, dict) else ''}"
         for ex in examples
     ) if examples else "  (none)"
-
     imports_block = ", ".join(imports_allowed) if imports_allowed else "none"
 
     return f"""You are a Python function generator. Output ONLY a single Python function definition.
@@ -221,12 +227,6 @@ class GemmaWorker(BaseWorker):
     """
 
     def execute(self, store) -> WorkerResult:
-        """
-        Read the ticket payload, call Gemma, validate and return the result.
-
-        Raises WorkerFailure for any expected failure mode.
-        Unexpected exceptions propagate to BaseWorker.run() for forwarding.
-        """
         ticket = store.read(self.ticket_id)
         if ticket is None:
             raise WorkerFailure(
@@ -235,37 +235,36 @@ class GemmaWorker(BaseWorker):
             )
 
         payload = ticket.payload
-        if not isinstance(payload, dict):
+
+        # payload may be a FunctionSpec instance (from store.read()) or a dict
+        # (from direct construction in tests). Normalise to FunctionSpec.
+        if isinstance(payload, dict):
+            try:
+                payload = FunctionSpec(**payload)
+            except Exception as exc:
+                raise WorkerFailure(
+                    reason=f"Invalid function_spec payload: {exc}",
+                    raw_excerpt=str(payload)[:500],
+                )
+
+        if not isinstance(payload, FunctionSpec):
             raise WorkerFailure(
-                reason=f"Expected dict payload, got {type(payload).__name__}",
+                reason=f"GemmaWorker only handles FunctionSpec payloads, got {type(payload).__name__}",
                 raw_excerpt="",
             )
 
-        payload_type = payload.get("type")
-        if payload_type != "function_spec":
-            raise WorkerFailure(
-                reason=f"GemmaWorker only handles function_spec payloads, got {payload_type!r}",
-                raw_excerpt="",
-            )
-
-        function_name = payload.get("function_name", "")
+        function_name = payload.function_name
         prompt = _build_prompt(payload)
 
-        # Call Ollama
         raw_response = _call_ollama(prompt)
-
-        # Clean response
         cleaned = _strip_channel_markers(raw_response)
         cleaned = _strip_code_fences(cleaned)
-
-        # Validate: exactly one function with the right name
         code = _validate_single_function(cleaned, function_name)
 
         return WorkerResult(
             data=code,
             summary=f"implemented {function_name}() — {len(code)} chars",
         )
-
 
 # ---------------------------------------------------------------------------
 # Multiprocessing entry point

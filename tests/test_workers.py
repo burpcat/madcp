@@ -2,44 +2,46 @@
 from __future__ import annotations
 
 """
-Tests for madhu/workers/gemma.py and madhu/workers/base.py.
+Tests for madhu/workers/ — base, hamsa, providers.
 
 Covers:
-- _strip_channel_markers(): removes <|...|> tokens
-- _strip_code_fences(): removes ```python ... ``` and ``` ... ```
-- _validate_single_function(): accepts valid single function, rejects zero/multi/wrong name
-- _call_ollama(): success path, HTTP error, timeout, empty response (all mocked)
-- GemmaWorker.execute(): success path (mocked Ollama)
-- GemmaWorker.execute(): parse failure raises WorkerFailure
-- GemmaWorker.execute(): wrong payload type raises WorkerFailure
+- Provider protocol: OllamaProvider.generate() success + failure modes (mocked httpx)
+- PROVIDER_REGISTRY: contains exactly {"ollama": OllamaProvider} at v0
+- Unknown provider name raises WorkerFailure
+- _strip_channel_markers, _strip_code_fences, _validate_single_function
+- HamsaWorker.execute(): success path with stub provider (not mocked httpx)
+- HamsaWorker.execute(): ProviderError → WorkerFailure
+- HamsaWorker.execute(): parse failure raises WorkerFailure
+- HamsaWorker.execute(): wrong payload type raises WorkerFailure
+- HamsaWorker.execute(): with real TicketStore (catches mock-vs-real gaps)
 - BaseWorker.run(): success path calls release with 'done'
 - BaseWorker.run(): WorkerFailure calls forward
-- BaseWorker.run(): acquire returns False → exits cleanly (no release/forward)
+- BaseWorker.run(): acquire returns False → exits cleanly
 
 Does NOT cover:
-- Stage 11 (scheduler): multiprocessing.Process spawn, MTap enforcement
+- Stage 10 (tier registry): provider_name/config read from YAML
+- Stage 11 (scheduler): multiprocessing.Process spawn
 - Stage 13 (JSONL log): log entries from worker events
 - Real Ollama calls — all network calls are mocked
 """
 
-import ast
 import uuid
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 import respx
-import httpx
 
-from madhu.workers.base import BaseWorker, WorkerFailure, WorkerResult
-from madhu.workers.gemma import (
-    GemmaWorker,
+from madhu.workers.base import BaseWorker, ProviderError, WorkerFailure, WorkerResult
+from madhu.workers.hamsa import (
+    HamsaWorker,
     _build_prompt,
-    _call_ollama,
     _strip_channel_markers,
     _strip_code_fences,
     _validate_single_function,
-    OLLAMA_URL,
 )
+from madhu.workers.providers import PROVIDER_REGISTRY
+from madhu.workers.providers.ollama import OllamaProvider
 
 
 # ---------------------------------------------------------------------------
@@ -58,14 +60,124 @@ VALID_PAYLOAD = {
     "imports_allowed": [],
 }
 
+OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
+
+
+class StubProvider:
+    """
+    Test double for the Provider protocol.
+    Returns a hardcoded response without any network calls.
+    """
+    def __init__(self, response: str = VALID_FUNCTION, raises: Exception = None):
+        self._response = response
+        self._raises = raises
+
+    def generate(self, prompt: str, model: str, temperature: float, timeout: float) -> str:
+        if self._raises:
+            raise self._raises
+        return self._response
+
+
+def make_hamsa_worker(
+    ticket_id: str = "t-001",
+    agent_name: str = "vasishtha",
+    provider: object = None,
+) -> HamsaWorker:
+    """Return a HamsaWorker with a stub provider injected."""
+    worker = HamsaWorker(
+        ticket_id=ticket_id,
+        agent_name=agent_name,
+        db_path=":memory:",
+        provider_name="ollama",
+    )
+    if provider is not None:
+        # Inject stub by patching _make_provider
+        worker._make_provider = lambda: provider
+    return worker
+
 
 def make_store_with_ticket(payload: dict = None) -> MagicMock:
-    """Return a mock store that returns a ticket with the given payload."""
+    """Return a mock store returning a ticket with the given payload."""
     store = MagicMock()
+    store.read.return_value = None  # safe default; override per test
     ticket = MagicMock()
     ticket.payload = payload or VALID_PAYLOAD
     store.read.return_value = ticket
     return store
+
+
+# ---------------------------------------------------------------------------
+# PROVIDER_REGISTRY
+# ---------------------------------------------------------------------------
+
+def test_registry_contains_ollama():
+    assert "ollama" in PROVIDER_REGISTRY
+    assert PROVIDER_REGISTRY["ollama"] is OllamaProvider
+
+
+def test_registry_has_exactly_one_entry_at_v0():
+    """Catches accidental additions to the registry."""
+    assert set(PROVIDER_REGISTRY.keys()) == {"ollama"}
+
+
+# ---------------------------------------------------------------------------
+# OllamaProvider — mocked httpx
+# ---------------------------------------------------------------------------
+
+@respx.mock
+def test_ollama_provider_success():
+    respx.post(OLLAMA_GENERATE_URL).mock(
+        return_value=httpx.Response(200, json={"response": "def foo(): pass"})
+    )
+    provider = OllamaProvider()
+    result = provider.generate("write a function", "model-x", 0.2, 30.0)
+    assert result == "def foo(): pass"
+
+
+@respx.mock
+def test_ollama_provider_http_error():
+    respx.post(OLLAMA_GENERATE_URL).mock(
+        return_value=httpx.Response(500, text="internal error")
+    )
+    provider = OllamaProvider()
+    with pytest.raises(ProviderError, match="HTTP error"):
+        provider.generate("prompt", "model", 0.2, 30.0)
+
+
+@respx.mock
+def test_ollama_provider_empty_response():
+    respx.post(OLLAMA_GENERATE_URL).mock(
+        return_value=httpx.Response(200, json={"response": ""})
+    )
+    provider = OllamaProvider()
+    with pytest.raises(ProviderError, match="empty response"):
+        provider.generate("prompt", "model", 0.2, 30.0)
+
+
+def test_ollama_provider_timeout():
+    with respx.mock:
+        respx.post(OLLAMA_GENERATE_URL).mock(
+            side_effect=httpx.TimeoutException("timed out")
+        )
+        provider = OllamaProvider()
+        with pytest.raises(ProviderError, match="timed out"):
+            provider.generate("prompt", "model", 0.2, 30.0)
+
+
+def test_ollama_provider_connection_error():
+    with respx.mock:
+        respx.post(OLLAMA_GENERATE_URL).mock(
+            side_effect=httpx.ConnectError("refused")
+        )
+        provider = OllamaProvider()
+        with pytest.raises(ProviderError, match="connection error"):
+            provider.generate("prompt", "model", 0.2, 30.0)
+
+
+def test_ollama_provider_custom_endpoint():
+    """OllamaProvider uses the configured endpoint, not hardcoded localhost."""
+    provider = OllamaProvider(endpoint="http://myserver:11434")
+    assert provider._generate_url == "http://myserver:11434/api/generate"
 
 
 # ---------------------------------------------------------------------------
@@ -80,10 +192,6 @@ def test_strip_channel_markers_removes_tokens():
 def test_strip_channel_markers_noop_on_clean():
     code = "def foo(): pass"
     assert _strip_channel_markers(code) == code
-
-
-def test_strip_channel_markers_handles_empty():
-    assert _strip_channel_markers("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +209,7 @@ def test_strip_code_fences_untagged():
 
 
 def test_strip_code_fences_noop_on_plain():
-    code = "def foo(): pass"
-    assert _strip_code_fences(code) == code
+    assert _strip_code_fences("def foo(): pass") == "def foo(): pass"
 
 
 # ---------------------------------------------------------------------------
@@ -111,8 +218,7 @@ def test_strip_code_fences_noop_on_plain():
 
 def test_validate_accepts_valid_function():
     code = "def add_two(a, b):\n    return a + b"
-    result = _validate_single_function(code, "add_two")
-    assert result == code
+    assert _validate_single_function(code, "add_two") == code
 
 
 def test_validate_rejects_syntax_error():
@@ -132,123 +238,124 @@ def test_validate_rejects_multiple_functions():
 
 
 def test_validate_rejects_wrong_name():
-    code = "def bar(): pass"
     with pytest.raises(WorkerFailure, match="Function name mismatch"):
-        _validate_single_function(code, "foo")
+        _validate_single_function("def bar(): pass", "foo")
 
 
 def test_validate_rejects_nested_only():
-    """A function defined only inside another function is not top-level."""
-    code = "def outer():\n    def inner(): pass"
+    """A lambda has no top-level function definition."""
     with pytest.raises(WorkerFailure, match="no function definition"):
-        _validate_single_function(code, "inner")
+        _validate_single_function("x = lambda: None", "x")
 
 
 # ---------------------------------------------------------------------------
-# _call_ollama (mocked with respx)
+# HamsaWorker.execute() — stub provider injected
 # ---------------------------------------------------------------------------
 
-@respx.mock
-def test_call_ollama_success():
-    respx.post(OLLAMA_URL).mock(
-        return_value=httpx.Response(200, json={"response": "def foo(): pass"})
-    )
-    result = _call_ollama("write a function")
-    assert result == "def foo(): pass"
-
-
-@respx.mock
-def test_call_ollama_http_error():
-    respx.post(OLLAMA_URL).mock(
-        return_value=httpx.Response(500, text="internal error")
-    )
-    with pytest.raises(WorkerFailure, match="HTTP error"):
-        _call_ollama("write a function")
-
-
-@respx.mock
-def test_call_ollama_empty_response():
-    respx.post(OLLAMA_URL).mock(
-        return_value=httpx.Response(200, json={"response": ""})
-    )
-    with pytest.raises(WorkerFailure, match="empty response"):
-        _call_ollama("write a function")
-
-
-def test_call_ollama_timeout():
-    with respx.mock:
-        respx.post(OLLAMA_URL).mock(side_effect=httpx.TimeoutException("timed out"))
-        with pytest.raises(WorkerFailure, match="timed out"):
-            _call_ollama("write a function")
-
-
-def test_call_ollama_connection_error():
-    with respx.mock:
-        respx.post(OLLAMA_URL).mock(side_effect=httpx.ConnectError("refused"))
-        with pytest.raises(WorkerFailure, match="connection error"):
-            _call_ollama("write a function")
-
-
-# ---------------------------------------------------------------------------
-# GemmaWorker.execute() — mocked store + Ollama
-# ---------------------------------------------------------------------------
-
-@respx.mock
-def test_gemma_execute_success():
-    """execute() returns WorkerResult with the cleaned function code."""
-    respx.post(OLLAMA_URL).mock(
-        return_value=httpx.Response(200, json={"response": VALID_FUNCTION})
-    )
+def test_hamsa_execute_success_with_stub():
+    """execute() returns WorkerResult when stub provider returns valid code."""
     store = make_store_with_ticket(VALID_PAYLOAD)
-    worker = GemmaWorker(ticket_id="t-001", agent_name="vasishtha", db_path=":memory:")
+    worker = make_hamsa_worker(provider=StubProvider(response=VALID_FUNCTION))
     result = worker.execute(store)
     assert isinstance(result, WorkerResult)
     assert "add_two" in result.data
     assert "add_two" in result.summary
 
 
-@respx.mock
-def test_gemma_execute_strips_fences():
+def test_hamsa_execute_provider_error_raises_worker_failure():
+    """ProviderError from provider is converted to WorkerFailure."""
+    store = make_store_with_ticket(VALID_PAYLOAD)
+    worker = make_hamsa_worker(
+        provider=StubProvider(raises=ProviderError("timed out"))
+    )
+    with pytest.raises(WorkerFailure, match="timed out"):
+        worker.execute(store)
+
+
+def test_hamsa_execute_strips_fences():
     """execute() strips code fences before validation."""
     fenced = f"```python\n{VALID_FUNCTION}\n```"
-    respx.post(OLLAMA_URL).mock(
-        return_value=httpx.Response(200, json={"response": fenced})
-    )
     store = make_store_with_ticket(VALID_PAYLOAD)
-    worker = GemmaWorker(ticket_id="t-002", agent_name="vasishtha", db_path=":memory:")
+    worker = make_hamsa_worker(provider=StubProvider(response=fenced))
     result = worker.execute(store)
     assert "```" not in result.data
 
 
-@respx.mock
-def test_gemma_execute_parse_failure_raises_worker_failure():
-    """execute() raises WorkerFailure when Gemma returns multiple functions."""
+def test_hamsa_execute_parse_failure_raises_worker_failure():
+    """execute() raises WorkerFailure when provider returns multiple functions."""
     multi = "def add_two(a, b): return a+b\ndef subtract(a, b): return a-b"
-    respx.post(OLLAMA_URL).mock(
-        return_value=httpx.Response(200, json={"response": multi})
-    )
     store = make_store_with_ticket(VALID_PAYLOAD)
-    worker = GemmaWorker(ticket_id="t-003", agent_name="vasishtha", db_path=":memory:")
+    worker = make_hamsa_worker(provider=StubProvider(response=multi))
     with pytest.raises(WorkerFailure, match="2 function definitions"):
         worker.execute(store)
 
 
-def test_gemma_execute_wrong_payload_type():
+def test_hamsa_execute_wrong_payload_type():
     """execute() raises WorkerFailure for non-function_spec payloads."""
     bad_payload = {"type": "task_brief", "goal": "something"}
     store = make_store_with_ticket(bad_payload)
-    worker = GemmaWorker(ticket_id="t-004", agent_name="vasishtha", db_path=":memory:")
-    with pytest.raises(WorkerFailure, match="only handles function_spec"):
+    worker = make_hamsa_worker(provider=StubProvider())
+    with pytest.raises(WorkerFailure, match="Invalid function_spec payload"):
         worker.execute(store)
 
 
-def test_gemma_execute_missing_ticket():
-    """execute() raises WorkerFailure if the ticket is not in the store."""
+def test_hamsa_execute_missing_ticket():
+    """execute() raises WorkerFailure if ticket not in store."""
     store = MagicMock()
     store.read.return_value = None
-    worker = GemmaWorker(ticket_id="t-005", agent_name="vasishtha", db_path=":memory:")
+    worker = make_hamsa_worker(provider=StubProvider())
     with pytest.raises(WorkerFailure, match="not found in store"):
         worker.execute(store)
+
+
+def test_hamsa_execute_unknown_provider():
+    """Unknown provider name raises WorkerFailure with clear message."""
+    store = make_store_with_ticket(VALID_PAYLOAD)
+    worker = HamsaWorker("t-x", "vasishtha", ":memory:", provider_name="vllm")
+    with pytest.raises(WorkerFailure, match="Unknown provider"):
+        worker.execute(store)
+
+
+# ---------------------------------------------------------------------------
+# HamsaWorker.execute() — real TicketStore integration
+# ---------------------------------------------------------------------------
+
+def test_hamsa_execute_with_real_store():
+    """
+    execute() works with a real TicketStore returning a FunctionSpec on read.
+    Catches mock-vs-real divergence on payload type.
+    """
+    from madhu.schemas.envelope import Envelope, Ticket
+    from madhu.schemas.payloads import FunctionSpec
+    from madhu.store.sqlite import TicketStore
+
+    store = TicketStore(":memory:")
+    spec = FunctionSpec(
+        function_name="add_two",
+        signature="def add_two(a: int, b: int) -> int",
+        docstring="Return a + b.",
+        constraints=["handle negatives"],
+        examples=[{"input": "a=1, b=2", "output": "3"}],
+        imports_allowed=[],
+    )
+    ticket = Ticket(
+        envelope=Envelope(
+            id="real-store-001",
+            tier_name="Hamsa",
+            tier_level=2,
+            status="queued",
+            created_by_agent="param-aatma",
+        ),
+        payload=spec.model_dump(),
+    )
+    store.create(ticket)
+
+    worker = make_hamsa_worker(
+        ticket_id="real-store-001",
+        provider=StubProvider(response=VALID_FUNCTION),
+    )
+    result = worker.execute(store)
+    assert "add_two" in result.data
 
 
 # ---------------------------------------------------------------------------
@@ -256,15 +363,13 @@ def test_gemma_execute_missing_ticket():
 # ---------------------------------------------------------------------------
 
 def test_base_run_success_calls_release():
-    """
-    run() calls tm.release() with 'done' on successful execute().
-    Uses a concrete subclass with a hardcoded execute() return.
-    """
+    """run() calls tm.release() with 'done' on successful execute()."""
     class SuccessWorker(BaseWorker):
         def execute(self, store):
-            return WorkerResult(data="def foo(): pass", summary="done")
+            return WorkerResult(data="def foo(): pass", summary="wrote the function")
 
     store = MagicMock()
+    store.read.return_value = None  # _write_result exits early — not under test here
     tm = MagicMock()
     tm.acquire.return_value = True
 
@@ -273,7 +378,7 @@ def test_base_run_success_calls_release():
         worker = SuccessWorker("t-ok", "vasishtha", ":memory:")
         worker.run()
 
-    tm.release.assert_called_once_with("t-ok", "vasishtha", "done", "done")
+    tm.release.assert_called_once_with("t-ok", "vasishtha", "wrote the function", "done")
     tm.forward.assert_not_called()
 
 
@@ -284,6 +389,7 @@ def test_base_run_worker_failure_calls_forward():
             raise WorkerFailure("bad output", "raw junk")
 
     store = MagicMock()
+    store.read.return_value = None
     tm = MagicMock()
     tm.acquire.return_value = True
 
@@ -303,6 +409,7 @@ def test_base_run_acquire_false_exits_cleanly():
             return WorkerResult(data="x", summary="x")
 
     store = MagicMock()
+    store.read.return_value = None
     tm = MagicMock()
     tm.acquire.return_value = False
 

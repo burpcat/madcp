@@ -2,116 +2,87 @@
 from __future__ import annotations
 
 """
-Base worker boilerplate for MadCP.
+Base abstractions for MadCP workers.
 
-All tier workers inherit from BaseWorker or follow its calling convention.
-The entry point for multiprocessing.Process is always a module-level function
-run_worker(ticket_id, agent_name, db_path) — not a method — so it can be
-pickled by multiprocessing on all platforms.
+Defines:
+- Provider protocol: one method, generate(), returns raw model output
+- ProviderError: raised by providers on expected failure
+- BaseWorker: ABC for tier workers — owns the MTap lifecycle
+- WorkerResult, WorkerFailure: return/exception types for execute()
 
-MTap contract (leaf workers):
-  spawn → load → acquire → execute → release/forward → exit
-No queue, no persistent state. One ticket per process lifetime.
+Provider implementations live in madhu/workers/providers/.
+Worker implementations (hamsa.py etc.) live alongside this file.
 """
 
 from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
+
+from madhu.store.sqlite import TicketStore
+from madhu.store.touch import TouchManager
 
 
-class BaseWorker(ABC):
+# ---------------------------------------------------------------------------
+# Provider abstraction
+# ---------------------------------------------------------------------------
+
+class ProviderError(Exception):
     """
-    Abstract base for MadCP workers.
+    Raised by a Provider on expected failure.
 
-    Subclasses implement execute(). The run_worker() module-level function
-    in each worker module is the multiprocessing entry point and calls
-    this class's run() method.
+    Expected failures: HTTP errors, timeouts, empty responses, connection
+    refused. Unexpected failures (bugs in provider code) propagate as-is.
+
+    Workers catch ProviderError and convert it to WorkerFailure.
+    """
+    pass
+
+
+@runtime_checkable
+class Provider(Protocol):
+    """
+    Protocol for LLM provider implementations.
+
+    A Provider handles exactly one concern: sending a prompt to a model
+    and returning the raw string response. No parsing, no validation,
+    no ticket awareness.
+
+    Implementations live in madhu/workers/providers/. To add a new provider:
+    1. Create madhu/workers/providers/{name}.py implementing this protocol
+    2. Add it to PROVIDER_REGISTRY in madhu/workers/providers/__init__.py
+    3. Set provider: "{name}" in the tier YAML config
+
+    generate() raises ProviderError on expected failure (timeout, HTTP error,
+    empty response). All other exceptions propagate.
     """
 
-    def __init__(self, ticket_id: str, agent_name: str, db_path: str) -> None:
+    def generate(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float,
+        timeout: float,
+    ) -> str:
         """
-        Initialise with identity and store location.
+        Send prompt to the model and return the raw response string.
 
-        db_path is passed from the scheduler (stage 11). Workers never
-        derive the path themselves.
-        """
-        self.ticket_id = ticket_id
-        self.agent_name = agent_name
-        self.db_path = db_path
+        Args:
+            prompt: The full prompt string to send.
+            model: Model identifier (provider-specific format).
+            temperature: Sampling temperature.
+            timeout: Request timeout in seconds.
 
-    def run(self) -> None:
-        """
-        Execute the MTap lifecycle: acquire → execute → release/forward.
+        Returns:
+            Raw model output as a string. Not cleaned, not validated.
 
-        Subclasses do not override this. They implement execute() which is
-        called between acquire and release.
-        """
-        from madhu.store.sqlite import TicketStore
-        from madhu.store.touch import TouchManager
-
-        store = TicketStore(self.db_path)
-        tm = TouchManager(store)
-
-        acquired = tm.acquire(self.ticket_id, self.agent_name)
-        if not acquired:
-            # Another worker beat us to it — exit cleanly (MTap: one shot)
-            return
-
-        try:
-            result = self.execute(store)
-            tm.release(self.ticket_id, self.agent_name, result.summary, "done")
-            self._write_result(store, result)
-        except WorkerFailure as exc:
-            tm.forward(self.ticket_id, exc.reason, exc.raw_excerpt)
-        except Exception as exc:
-            # Unexpected error — forward with traceback as excerpt
-            import traceback
-            tm.forward(
-                self.ticket_id,
-                f"Unexpected worker error: {type(exc).__name__}: {exc}",
-                traceback.format_exc()[:500],
-            )
-
-    def _write_result(self, store, result: WorkerResult) -> None:
-        """Write the result back to the ticket in SQLite."""
-        from madhu.schemas.envelope import Result, Ticket, Envelope
-        import json
-
-        ticket = store.read(self.ticket_id)
-        if ticket is None:
-            return
-
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-
-        env_dict = ticket.envelope.model_dump()
-        env_dict["status"] = "done"
-        env_dict["updated_at"] = now
-
-        result_obj = Result(
-            status="success",
-            data=result.data,
-            produced_at=now,
-            by_agent=self.agent_name,
-        )
-
-        updated = Ticket(
-            envelope=Envelope(**env_dict),
-            payload=ticket.payload,
-            result=result_obj,
-        )
-        store.update(updated)
-
-    @abstractmethod
-    def execute(self, store) -> WorkerResult:
-        """
-        Do the actual work for this ticket.
-
-        Return a WorkerResult on success.
-        Raise WorkerFailure on expected failure (bad output, parse error).
-        Raise any other exception for unexpected failures — base.run() will
-        forward with a traceback excerpt.
+        Raises:
+            ProviderError: On expected failure (network, timeout, empty).
         """
         ...
 
+
+# ---------------------------------------------------------------------------
+# Worker result / failure types
+# ---------------------------------------------------------------------------
 
 class WorkerResult:
     """Successful result from a worker's execute() call."""
@@ -125,12 +96,106 @@ class WorkerFailure(Exception):
     """
     Expected worker failure — triggers a forward, not a crash.
 
-    Use this for predictable failure modes: bad model output, parse errors,
-    constraint violations. Not for unexpected exceptions (those propagate
-    and are caught by BaseWorker.run()).
+    Use for predictable failure modes: bad model output, parse errors,
+    constraint violations, provider errors. Not for unexpected exceptions
+    (those propagate and are caught by BaseWorker.run()).
     """
 
     def __init__(self, reason: str, raw_excerpt: str = "") -> None:
         super().__init__(reason)
         self.reason = reason
-        self.raw_excerpt = raw_excerpt[:500]  # cap excerpt length
+        self.raw_excerpt = raw_excerpt[:500]
+
+
+# ---------------------------------------------------------------------------
+# Base worker
+# ---------------------------------------------------------------------------
+
+class BaseWorker(ABC):
+    """
+    Abstract base for MadCP workers.
+
+    Owns the MTap lifecycle: acquire → execute → release/forward.
+    Subclasses implement execute() only.
+
+    The multiprocessing entry point in each worker module is a module-level
+    run_worker(ticket_id, agent_name, db_path) function — not a method —
+    so it can be pickled by multiprocessing on all platforms.
+    """
+
+    def __init__(self, ticket_id: str, agent_name: str, db_path: str) -> None:
+        self.ticket_id = ticket_id
+        self.agent_name = agent_name
+        self.db_path = db_path
+
+    def run(self) -> None:
+        """
+        Execute the MTap lifecycle: acquire → execute → release → write result.
+
+        _write_result() is outside the try/except block so its failure
+        cannot trigger a forward on an already-released ticket. A result-write
+        failure propagates as an unhandled exception from run() — the
+        scheduler detects the non-zero child process exit.
+        """
+        store = TicketStore(self.db_path)
+        tm = TouchManager(store)
+
+        acquired = tm.acquire(self.ticket_id, self.agent_name)
+        if not acquired:
+            return
+
+        try:
+            result = self.execute(store)
+        except WorkerFailure as exc:
+            tm.forward(self.ticket_id, exc.reason, exc.raw_excerpt)
+            return
+        except Exception as exc:
+            import traceback
+            tm.forward(
+                self.ticket_id,
+                f"Unexpected worker error: {type(exc).__name__}: {exc}",
+                traceback.format_exc()[:500],
+            )
+            return
+
+        # execute() succeeded — release touch, then write result.
+        # These are outside the try block: _write_result() failure cannot
+        # trigger a forward on an already-released (done) ticket.
+        tm.release(self.ticket_id, self.agent_name, result.summary, "done")
+        self._write_result(store, result)
+
+    def _write_result(self, store: TicketStore, result: WorkerResult) -> None:
+        """
+        Attach the Result object to the ticket in SQLite.
+
+        Reads the post-release ticket (status=done, touched_by=None),
+        sets result, writes back. Mutates only result and updated_at —
+        no Envelope reconstruction, no risk of dropping fields.
+        """
+        from datetime import datetime, timezone
+        from madhu.schemas.envelope import Result
+
+        ticket = store.read(self.ticket_id)
+        if ticket is None:
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+        ticket.result = Result(
+            status="success",
+            data=result.data,
+            produced_at=now,
+            by_agent=self.agent_name,
+        )
+        ticket.envelope.updated_at = now
+        store.update(ticket)
+
+    @abstractmethod
+    def execute(self, store: TicketStore) -> WorkerResult:
+        """
+        Do the actual work for this ticket.
+
+        Return WorkerResult on success.
+        Raise WorkerFailure on expected failure.
+        Raise any other exception for unexpected failures.
+        """
+        ...
