@@ -1,0 +1,20 @@
+tier_name: "Hamsa"
+tier_level: 2
+default_agent_name: null
+pool: "RISHIS"
+accepts_external: false
+mtap: true
+max_parallel: 2
+allowed_payload_types:
+  - "function_spec"
+worker_module: "madhu.workers.hamsa"
+worker_entrypoint: "run_worker"
+provider: "ollama"
+provider_config:
+  model: "hf.co/yuxinlu1/gemma-4-12B-coder-fable5-composer2.5-v1-GGUF:Q8_0"
+  endpoint: "http://localhost:11434"
+  temperature: 0.2
+  timeout: 120
+failure_policy:
+  max_forwards: 3
+  on_max: "abort"
