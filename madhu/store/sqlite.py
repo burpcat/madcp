@@ -614,6 +614,10 @@ class TicketStore:
         with self._lock:
             self._conn.close()
 
+    @property
+    def db_path(self) -> str:
+        return self._db_path
+
     def __enter__(self) -> "TicketStore":
         return self
 

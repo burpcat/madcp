@@ -260,18 +260,32 @@ class HamsaWorker(BaseWorker):
 # Multiprocessing entry point
 # ---------------------------------------------------------------------------
 
-def run_worker(ticket_id: str, agent_name: str, db_path: str) -> None:
+def run_worker(
+    ticket_id: str,
+    agent_name: str,
+    db_path: str,
+    provider_name: str = _DEFAULT_PROVIDER,
+    provider_config: dict | None = None,
+) -> None:
     """
     Entry point for multiprocessing.Process.
 
     Module-level function (not a method) — required for pickling on macOS
-    (spawn context). Provider defaults used until stage 10 wires tier config.
+    (spawn context). Provider name and config now passed from the scheduler
+    via TierRegistry — closes the Stage 9 wiring gap noted in the builder report.
 
-    Stage 10 update: pass provider_name and provider_config from tier YAML.
+    Args:
+        ticket_id: UUID of the ticket to work
+        agent_name: lineage path assigned by the scheduler (e.g. AdHa-vasishtha)
+        db_path: path to palakudu.db
+        provider_name: provider key from PROVIDER_REGISTRY (e.g. "ollama")
+        provider_config: dict of provider kwargs (model, endpoint, temperature, timeout)
     """
     worker = HamsaWorker(
         ticket_id=ticket_id,
         agent_name=agent_name,
         db_path=db_path,
+        provider_name=provider_name,
+        provider_config=provider_config or {},
     )
     worker.run()
