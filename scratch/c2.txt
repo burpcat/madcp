@@ -1,0 +1,28 @@
+================================================================
+C2 — Persistence + coordination smoke
+================================================================
+tmp dir: /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c2-zkwmeb_j
+
+— §1 — Round-trip: create / read / equality —
+  ✓ Create returns non-empty ticket id
+  ✓ Read returns a Ticket with matching fields
+
+— §2 — Markdown derivation —
+  ✓ Markdown file exists for created ticket
+  ✓ Markdown has YAML frontmatter with envelope fields
+
+— §3 — Touch acquire is atomic —
+  ✓ Two concurrent acquires: exactly one winner
+
+— §4 — Touch release writes history + status —
+  ✓ Release transitions status to 'done' and appends to touch_history
+
+— §5 — Forward chain accumulates failure_notes —
+  ✗ First forward failed: original status not 'forwarded': killed
+
+— §6 — Markdown reflects forward chain —
+
+================================================================
+  Passed: 6
+  Failed: 1
+================================================================

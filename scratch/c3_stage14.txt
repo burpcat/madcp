@@ -1,0 +1,43 @@
+================================================================
+C3 — Live worker pipeline smoke
+================================================================
+
+Pre-flight checklist:
+  - Ollama running at http://localhost:11434
+  - Configured model pulled
+  - Stage 11 (scheduler) implemented
+  - `python -m madhu.scheduler` is the correct invocation
+    (edit scheduler_cmd in this script if not)
+
+tmp dir: /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-p3l8_720
+db:      /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-p3l8_720/test.db
+log:     /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c3-p3l8_720/logs/runs.jsonl
+
+§1 — Injecting 5 tickets into fresh DB
+  injected d8317adf  (reverse_string)
+  injected c8b2e359  (to_uppercase)
+  injected 7c4cfae0  (strip_whitespace)
+  injected 4e4170a6  (last_word)
+  injected edea780c  (double_string)
+
+§2 — Starting scheduler subprocess
+
+§3 — Polling for terminal states (timeout 600s)
+  0/5 terminal after 0s
+  1/5 terminal after 5s
+  3/5 terminal after 10s
+
+§4 — Verification
+  ✓ All 5 tickets reached a terminal state
+    done: 5
+  ✓ JSONL captured 5 spawn events, 4 exit events
+  ✓ MTap: all 5 worker PIDs distinct
+  ✓ Peak concurrent workers: 2 ≤ 2
+  ✓ Lineage paths: all 5 match AdHa-* format
+  ✓ Leaf-tier worker names lowercase
+
+§5 — Stopping scheduler
+
+================================================================
+  PASSED — live worker pipeline verified
+================================================================
