@@ -65,7 +65,7 @@ class TouchManager:
         """
         self.store = store
 
-    def acquire(self, ticket_id: str, agent_name: str) -> bool:
+    def acquire(self, ticket_id: str, agent_name: str, logger=None) -> bool:
         """
         Atomically claim a ticket for an agent.
 
