@@ -1,0 +1,75 @@
+================================================================
+C4 — Full MCP loop + failure semantics smoke
+================================================================
+
+Pre-flight checklist:
+  - Ollama running at http://localhost:11434
+  - Configured model pulled
+  - Stage 14 (failure forwarding behaviour) implemented
+  - scratch/c3_scheduler_launcher.py exists (re-used by C4)
+
+Expected runtime: 3–10 minutes (one happy ticket + 3 Gemma rejections)
+
+tmp dir: /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c4-9dkums2n
+db:      /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c4-9dkums2n/test.db
+log:     /var/folders/c7/mw53z27j2tv2ldhj68s6yc5c0000gn/T/madhu-c4-9dkums2n/logs/runs.jsonl
+
+§1 — Inject happy-path ticket
+  happy ticket: 7574354c  (reverse_string)
+
+§2 — Inject impossible-spec ticket (expects 3 forwards → aborted)
+  impossible ticket: fcf5bd5c  (build_country_capitals)
+
+§3 — Starting scheduler subprocess
+
+§4 — Waiting for happy-path ticket to terminate
+  ...still polling (chain length 1, head status: queued)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 1, head status: touched)
+  ...still polling (chain length 2, head status: queued)
+  ✓ happy-path → done (chain length 2)
+
+§5 — Waiting for impossible-spec chain to terminate (up to 10 min)
+  ...still polling (chain length 2, head status: touched)
+  ...still polling (chain length 2, head status: touched)
+  ...still polling (chain length 3, head status: touched)
+  ...still polling (chain length 3, head status: touched)
+  chain: fcf5bd5c → 8a9cabac → 2f56a047 → 9be8d6c2  (head status: aborted)
+
+§6 — Verification — failure semantics
+  ✓ chain head status = aborted (distinct from killed)
+  ✓ chain length = 4 (original + 3 forwards)
+  ✓ aborted ticket has 3 failure_notes (one per forward)
+
+§7 — Verification — JSONL covers full MCP loop
+
+§8 — Stopping scheduler
+  scheduler stderr (last 800): b' 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n[scheduler] loop error: ValueError: too many values to unpack (expected 3, got 4)\n\n[scheduler] SIGINT received \xe2\x80\x94 shutting down gracefully\n'
+
+================================================================
+  FAILED (3 issues)
+    - worker names repeated across forwards: ['atri', 'bharadwaja', 'atri']. Each forward should pick a different RISHIS-pool name.
+    - JSONL missing required event types: ['forward', 'ollama_call', 'ollama_result', 'touch_acquire', 'touch_release']. Saw: ['ticket_aborted', 'worker_exit', 'worker_spawn']
+    - JSONL captured 0 forward events; expected ≥ 3
+================================================================

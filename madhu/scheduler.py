@@ -96,33 +96,33 @@ def _lineage_path(
     return f"{prefix}-{agent_name}"
 
 
-# ---------------------------------------------------------------------------
-# JSONL logging (minimal, pre-stage-13)
-# ---------------------------------------------------------------------------
+# # ---------------------------------------------------------------------------
+# # JSONL logging (minimal, pre-stage-13)
+# # ---------------------------------------------------------------------------
 
-def _log(event_type: str, ticket_id: str | None = None, **details: Any) -> None:
-    """
-    Write a JSONL log entry to logs/runs.jsonl.
+# def _log(event_type: str, ticket_id: str | None = None, **details: Any) -> None:
+#     """
+#     Write a JSONL log entry to logs/runs.jsonl.
 
-    Minimal implementation — stage 13 replaces this with the full
-    observability.jsonl module. Uses stderr as fallback if file write fails.
-    """
-    import json
-    from pathlib import Path
+#     Minimal implementation — stage 13 replaces this with the full
+#     observability.jsonl module. Uses stderr as fallback if file write fails.
+#     """
+#     import json
+#     from pathlib import Path
 
-    entry = {
-        "timestamp": _now(),
-        "event_type": event_type,
-        "ticket_id": ticket_id,
-        "details": details,
-    }
-    try:
-        log_path = Path("logs/runs.jsonl")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception as exc:
-        print(f"[scheduler] log write failed: {exc}", file=sys.stderr)
+#     entry = {
+#         "timestamp": _now(),
+#         "event_type": event_type,
+#         "ticket_id": ticket_id,
+#         "details": details,
+#     }
+#     try:
+#         log_path = Path("logs/runs.jsonl")
+#         log_path.parent.mkdir(parents=True, exist_ok=True)
+#         with log_path.open("a", encoding="utf-8") as f:
+#             f.write(json.dumps(entry) + "\n")
+#     except Exception as exc:
+#         print(f"[scheduler] log write failed: {exc}", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Scheduler
@@ -263,7 +263,7 @@ class Scheduler:
             )
             self._store.update(updated)
 
-            _log("janitor_requeue", ticket_id=tid, agent=note.agent)
+            self._log("janitor_requeue", ticket_id=tid, agent=note.agent)
             print(f"[scheduler] janitor: re-queued orphaned ticket {tid}", file=sys.stderr)
 
     # ------------------------------------------------------------------
@@ -321,7 +321,7 @@ class Scheduler:
                     file=sys.stderr,
                 )
 
-            _log("worker_timeout", ticket_id=ticket_id, tier=tier_name, elapsed_seconds=elapsed)
+            self._log("worker_timeout", ticket_id=ticket_id, tier=tier_name, elapsed_seconds=elapsed)
             self._active.pop(ticket_id, None)
 
     # ------------------------------------------------------------------
@@ -521,7 +521,7 @@ class Scheduler:
             try:
                 self._spawn(tid, lineage, tier_config)
                 active_by_tier[tier_name] = current + 1
-                _log("worker_spawn", ticket_id=tid, agent=lineage, tier=tier_name)
+                self._log("worker_spawn", ticket_id=tid, agent=lineage, tier=tier_name)
             except Exception as exc:
                 print(
                     f"[scheduler] spawn failed for ticket {tid}: {exc}",
@@ -650,7 +650,7 @@ class Scheduler:
                         result=ticket.result,
                     )
                     self._store.update(updated)
-                    _log("worker_killed_on_shutdown", ticket_id=ticket_id)
+                    self._log("worker_killed_on_shutdown", ticket_id=ticket_id)
             except Exception as exc:
                 print(
                     f"[scheduler] failed to mark {ticket_id} killed: {exc}",

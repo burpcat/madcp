@@ -379,6 +379,10 @@ def test_base_run_success_calls_release():
         worker.run()
 
     tm.release.assert_called_once_with("t-ok", "vasishtha", "wrote the function", "done", logger=None)
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2a64ded (c4 fixes fml)
     tm.forward.assert_not_called()
 
 

@@ -291,6 +291,23 @@ def run_worker(
     provider_config: dict | None = None,
     log_path: str | None = None,
 ) -> None:
+<<<<<<< HEAD
+=======
+    """
+    Entry point for multiprocessing.Process.
+
+    Module-level function (not a method) — required for pickling on macOS
+    (spawn context). Provider name and config now passed from the scheduler
+    via TierRegistry — closes the Stage 9 wiring gap noted in the builder report.
+
+    Args:
+        ticket_id: UUID of the ticket to work
+        agent_name: lineage path assigned by the scheduler (e.g. AdHa-vasishtha)
+        db_path: path to palakudu.db
+        provider_name: provider key from PROVIDER_REGISTRY (e.g. "ollama")
+        provider_config: dict of provider kwargs (model, endpoint, temperature, timeout)
+    """
+>>>>>>> 2a64ded (c4 fixes fml)
     from madhu.observability.jsonl import RunLogger
     logger = RunLogger(log_path) if log_path is not None else None
     worker = HamsaWorker(
