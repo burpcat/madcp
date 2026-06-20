@@ -206,9 +206,11 @@ def test_fetch_snapshot_readonly_no_writes(tmp_path):
     # Verify the connection fetch_snapshot uses is genuinely read-only:
     # opening with ?mode=ro on the same file and attempting a write must fail.
     ro_con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    with pytest.raises(sqlite3.OperationalError, match="readonly"):
-        ro_con.execute("INSERT INTO tickets VALUES (NULL,NULL,NULL,'1.0','X',1,'queued','solo',1,datetime('now'),datetime('now'),'x',NULL,NULL,'{}','[]')")
-    ro_con.close()
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            ro_con.execute("CREATE TABLE _write_probe (x INTEGER)")
+    finally:
+        ro_con.close()
 
 
 # ---------------------------------------------------------------------------

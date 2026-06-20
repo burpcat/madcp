@@ -263,7 +263,7 @@ class Scheduler:
             )
             self._store.update(updated)
 
-            self._log("janitor_requeue", ticket_id=tid, agent=note.agent)
+            self._log("janitor_requeue", ticket_id=tid, agent_name=note.agent)
             print(f"[scheduler] janitor: re-queued orphaned ticket {tid}", file=sys.stderr)
 
     # ------------------------------------------------------------------
@@ -321,7 +321,7 @@ class Scheduler:
                     file=sys.stderr,
                 )
 
-            self._log("worker_timeout", ticket_id=ticket_id, tier=tier_name, elapsed_seconds=elapsed)
+            self._log("worker_timeout", ticket_id=ticket_id, details={"tier": tier_name, "elapsed_seconds": elapsed})
             self._active.pop(ticket_id, None)
 
     # ------------------------------------------------------------------
@@ -521,7 +521,7 @@ class Scheduler:
             try:
                 self._spawn(tid, lineage, tier_config)
                 active_by_tier[tier_name] = current + 1
-                self._log("worker_spawn", ticket_id=tid, agent=lineage, tier=tier_name)
+                self._log("worker_spawn", ticket_id=tid, agent_name=lineage, details={"tier": tier_name})
             except Exception as exc:
                 print(
                     f"[scheduler] spawn failed for ticket {tid}: {exc}",

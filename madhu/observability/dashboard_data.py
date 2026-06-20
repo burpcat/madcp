@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+import sys
 
 
 @dataclass(frozen=True)
@@ -44,10 +46,12 @@ def fetch_snapshot(
     db_path: str,
     log_path: str = "logs/runs.jsonl",
 ) -> DashboardSnapshot:
+    abs_db_path = os.path.abspath(db_path)
     try:
-        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        con = sqlite3.connect(f"file:{abs_db_path}?mode=ro", uri=True)  # ← use abs_db_path
         con.row_factory = sqlite3.Row
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        print(f"[dashboard] connect error: {e}", file=sys.stderr)        # ← log the actual error
         return DashboardSnapshot(waiting=True)
 
     try:
@@ -62,7 +66,8 @@ def fetch_snapshot(
             recent_tickets=recent_tickets,
             log_tail=log_tail,
         )
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        print(f"[dashboard] query error: {e}", file=sys.stderr)          # ← log this too
         return DashboardSnapshot(waiting=True)
     finally:
         con.close()
