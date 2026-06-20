@@ -168,6 +168,7 @@ class HamsaWorker(BaseWorker):
         db_path: str,
         provider_name: str = _DEFAULT_PROVIDER,
         provider_config: dict | None = None,
+        logger=None,
     ) -> None:
         super().__init__(ticket_id, agent_name, db_path)
         self._provider_name = provider_name
@@ -282,11 +283,14 @@ def run_worker(
         provider_name: provider key from PROVIDER_REGISTRY (e.g. "ollama")
         provider_config: dict of provider kwargs (model, endpoint, temperature, timeout)
     """
+    from madhu.observability.jsonl import RunLogger
+    logger = RunLogger(log_path) if log_path is not None else None
     worker = HamsaWorker(
         ticket_id=ticket_id,
         agent_name=agent_name,
         db_path=db_path,
         provider_name=provider_name,
         provider_config=provider_config or {},
+        logger=logger,
     )
     worker.run()

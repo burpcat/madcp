@@ -123,10 +123,11 @@ class BaseWorker(ABC):
     so it can be pickled by multiprocessing on all platforms.
     """
 
-    def __init__(self, ticket_id: str, agent_name: str, db_path: str) -> None:
+    def __init__(self, ticket_id: str, agent_name: str, db_path: str, logger=None) -> None:
         self.ticket_id = ticket_id
         self.agent_name = agent_name
         self.db_path = db_path
+        self._logger = logger
 
     def run(self) -> None:
         """
@@ -140,28 +141,30 @@ class BaseWorker(ABC):
         store = TicketStore(self.db_path)
         tm = TouchManager(store)
 
-        acquired = tm.acquire(self.ticket_id, self.agent_name)
+        acquired = tm.acquire(self.ticket_id, self.agent_name, logger=self._logger)
         if not acquired:
             return
 
         try:
             result = self.execute(store)
         except WorkerFailure as exc:
-            tm.forward(self.ticket_id, exc.reason, exc.raw_excerpt)
+            tm.forward(self.ticket_id, self.agent_name, exc.reason, exc.raw_excerpt, logger=self._logger)
             return
         except Exception as exc:
             import traceback
             tm.forward(
                 self.ticket_id,
+                self.agent_name,
                 f"Unexpected worker error: {type(exc).__name__}: {exc}",
                 traceback.format_exc()[:500],
+                logger=self._logger,
             )
             return
 
         # execute() succeeded — release touch, then write result.
         # These are outside the try block: _write_result() failure cannot
         # trigger a forward on an already-released (done) ticket.
-        tm.release(self.ticket_id, self.agent_name, result.summary, "done")
+        tm.release(self.ticket_id, self.agent_name, result.summary, "done", logger=self._logger)
         self._write_result(store, result)
 
     def _write_result(self, store: TicketStore, result: WorkerResult) -> None:
