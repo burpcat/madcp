@@ -22,5 +22,6 @@ tickets/
 #ignore
 plan/
 
-madcp-private.md/
-userpatterns.md/
+# Private/config files
+.madcp-private.md
+.userpatterns.md
