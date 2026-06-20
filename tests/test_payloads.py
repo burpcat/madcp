@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLAights Reserved. See LICENSE.
 # tests/test_payloads.py
 """
 Tests for FunctionSpec payload validation.

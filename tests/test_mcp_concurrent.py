@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLAights Reserved. See LICENSE.
 # tests/test_mcp_concurrent.py
 """
 Concurrent submit_ticket verification — Stage 12.5.

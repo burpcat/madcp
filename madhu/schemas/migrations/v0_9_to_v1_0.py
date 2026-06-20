@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 # madhu/schemas/migrations/v0_9_to_v1_0.py
 """
 Migration: schema version 0.9 → 1.0

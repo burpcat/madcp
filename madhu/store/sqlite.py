@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 # madhu/store/sqlite.py
 """
 SQLite ticket store for MadCP — madhu.

@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLAights Reserved. See LICENSE.
 # madhu/workers/gemma.py
 from __future__ import annotations
 from madhu.schemas.payloads import FunctionSpec

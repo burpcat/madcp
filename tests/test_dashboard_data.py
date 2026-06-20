@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 """
 tests/test_dashboard_data.py — A4-authored tests for Stage 15.
 Run: pytest tests/test_dashboard_data.py -v

@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 # madhu/naming.py
 """
 Naming service for MadCP — madhu.

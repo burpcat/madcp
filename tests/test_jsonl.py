@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLAights Reserved. See LICENSE.
 # tests/test_jsonl.py
 """
 Tests for madhu/observability/jsonl.py — Stage 13.

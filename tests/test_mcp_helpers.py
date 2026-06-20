@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 # tests/test_mcp_helpers.py
 """
 Tests for madhu.mcp_helpers.

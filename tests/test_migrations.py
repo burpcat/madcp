@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLAights Reserved. See LICENSE.
 # tests/test_migrations.py
 """
 Tests for the migrate-on-read migrations framework.

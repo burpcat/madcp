@@ -1,0 +1,77 @@
+MadCP (Madhu Context Protocol) — Proprietary License
+Copyright (c) 2026 [Avinash]. All Rights Reserved.
+
+1. DEFINITIONS
+
+   "Software" means the MadCP server, the "madhu" package, and all source code,
+   object code, configuration, documentation, and accompanying files distributed
+   in this repository.
+
+   "Licensor" means the copyright holder named above.
+
+   "You" means the individual or entity exercising the rights granted under this
+   License.
+
+2. GRANT OF LICENSE
+
+   Subject to Your full compliance with this License, the Licensor grants You a
+   limited, non-exclusive, non-transferable, non-sublicensable, revocable license
+   to install and run the Software, in unmodified form, for Your own use.
+
+   No rights are granted other than those expressly stated in this Section.
+
+3. RESTRICTIONS
+
+   You shall NOT, in whole or in part:
+
+   (a) modify, adapt, translate, or create derivative works of the Software;
+   (b) copy or reproduce the Software, except for a single backup copy retained
+       solely for archival purposes and subject to this License;
+   (c) distribute, publish, sublicense, lease, rent, lend, sell, resell, or
+       otherwise transfer the Software or access to it to any third party;
+   (d) reverse-engineer, decompile, disassemble, or otherwise attempt to derive
+       the source code or underlying structure of any portion of the Software,
+       except to the extent this restriction is expressly prohibited by
+       applicable law;
+   (e) remove, alter, or obscure any copyright, trademark, or other proprietary
+       notice contained in the Software.
+
+4. OWNERSHIP
+
+   The Software is licensed, not sold. The Licensor retains all right, title, and
+   interest in and to the Software, including all intellectual property rights.
+   This License does not grant You any ownership interest in the Software.
+
+5. NOT OPEN SOURCE
+
+   This License is a proprietary license. It is not an open-source or free-software
+   license and does not grant any of the freedoms associated with such licenses,
+   including the freedom to study, modify, or redistribute the Software.
+
+6. TERMINATION
+
+   This License is effective until terminated. It terminates automatically and
+   immediately, without notice, if You breach any of its terms. Upon termination,
+   You must cease all use of the Software and destroy all copies in Your
+   possession or control. Sections 3, 4, 5, 7, and 8 survive termination.
+
+7. DISCLAIMER OF WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. THE LICENSOR DOES NOT
+   WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE OR OPERATE WITHOUT INTERRUPTION.
+
+8. LIMITATION OF LIABILITY
+
+   TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+   LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+   ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+9. RESERVATION OF RIGHTS
+
+   All rights not expressly granted in this License are reserved by the Licensor.
+
+For licensing inquiries, including permission to modify, copy, or redistribute,
+contact: [YOUR CONTACT EMAIL]

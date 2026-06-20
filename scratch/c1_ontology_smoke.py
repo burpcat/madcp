@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 # scratch/c1_ontology_smoke.py
 """
 MadCP Integration Checkpoint C1+ — Ontology Smoke Test

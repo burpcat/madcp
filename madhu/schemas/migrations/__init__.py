@@ -1,3 +1,4 @@
+# MadCP — Proprietary. Copyright (c) 2026 AVINASH ARUTLA. All Rights Reserved. See LICENSE.
 # madhu/schemas/migrations/__init__.py
 """
 Migrate-on-read framework for MadCP ticket schema versioning.
